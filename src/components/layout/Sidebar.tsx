@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { useUIStore, useAuthStore, useNotificationStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -27,6 +28,19 @@ export function Sidebar() {
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const logout = useAuthStore((s) => s.logout)
+
+  // Fetch platform name dynamically
+  const [platformName, setPlatformName] = useState<string>('')
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.platformName) {
+          setPlatformName(locale === 'ar' ? (data.platformNameAr || data.platformName) : data.platformName)
+        }
+      })
+      .catch(() => {})
+  }, [locale])
 
   // Admin navigation - ONLY admin sections
   const adminNav: NavItem[] = [
@@ -99,7 +113,7 @@ export function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold text-white truncate">
-                {locale === 'ar' ? 'منصة التعدين' : 'Mining Platform'}
+                {platformName || (locale === 'ar' ? 'منصة التعدين' : 'Mining Platform')}
               </h1>
               <p className="text-[10px] text-white/50 truncate">
                 {isAdmin ? (locale === 'ar' ? 'لوحة الإدارة' : 'Admin Panel') : '2026 Premium'}

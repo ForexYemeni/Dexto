@@ -94,16 +94,21 @@ export function AdminPayments() {
                 <th className="p-3 text-start font-medium">{t('name')}</th>
                 <th className="p-3 text-start font-medium">{t('network')}</th>
                 <th className="p-3 text-start font-medium">{t('amount')}</th>
-                <th className="p-3 text-start font-medium">{tab === 'withdrawals' ? t('withdrawalAddress') : t('walletAddress')}</th>
+                {tab === 'withdrawals' && (
+                  <th className="p-3 text-start font-medium">{t('withdrawalAddress')}</th>
+                )}
+                {tab === 'deposits' && (
+                  <th className="p-3 text-start font-medium">{locale === 'ar' ? 'رقم المعاملة' : 'TX Hash'}</th>
+                )}
                 <th className="p-3 text-start font-medium">{t('status')}</th>
                 <th className="p-3 text-end font-medium">{t('edit')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="p-8 text-center text-white/40">Loading...</td></tr>
+                <tr><td colSpan={tab === 'withdrawals' ? 6 : 6} className="p-8 text-center text-white/40">Loading...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-white/40">{t('noData')}</td></tr>
+                <tr><td colSpan={tab === 'withdrawals' ? 6 : 6} className="p-8 text-center text-white/40">{t('noData')}</td></tr>
               ) : (
                 items.map((item) => (
                   <tr key={item.id} className="border-b border-white/5 hover:bg-white/5">
@@ -118,24 +123,47 @@ export function AdminPayments() {
                         <p className="text-[10px] text-white/40">{locale === 'ar' ? 'صافي' : 'Net'}: {formatCurrency(item.netAmount, locale)}</p>
                       )}
                     </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1.5">
-                        <code className="text-[10px] text-white/70 font-mono break-all max-w-[180px]">{item.walletAddress}</code>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard?.writeText(item.walletAddress)
-                            toast({ title: t('copied') })
-                          }}
-                          className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
-                          title={t('copyAddress')}
-                        >
-                          <Copy className="w-3 h-3 text-white/60" />
-                        </button>
-                      </div>
-                      {item.txHash && (
-                        <p className="text-[10px] text-white/40 font-mono mt-1 break-all max-w-[180px]">TX: {item.txHash}</p>
-                      )}
-                    </td>
+                    {tab === 'withdrawals' ? (
+                      <td className="p-3">
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-[10px] text-white/70 font-mono truncate max-w-[120px]" title={item.walletAddress}>
+                            {item.walletAddress.slice(0, 8)}...{item.walletAddress.slice(-6)}
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard?.writeText(item.walletAddress)
+                              toast({ title: t('copied') })
+                            }}
+                            className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
+                            title={t('copyAddress')}
+                          >
+                            <Copy className="w-3 h-3 text-white/60" />
+                          </button>
+                        </div>
+                      </td>
+                    ) : (
+                      <td className="p-3">
+                        {item.txHash ? (
+                          <div className="flex items-center gap-1.5">
+                            <code className="text-[10px] text-white/70 font-mono truncate max-w-[120px]" title={item.txHash}>
+                              {item.txHash.slice(0, 8)}...{item.txHash.slice(-6)}
+                            </code>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard?.writeText(item.txHash)
+                                toast({ title: t('copied') })
+                              }}
+                              className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
+                              title={t('copyAddress')}
+                            >
+                              <Copy className="w-3 h-3 text-white/60" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-white/30">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                         item.status === 'completed' ? 'bg-green-500/20 text-green-400' :

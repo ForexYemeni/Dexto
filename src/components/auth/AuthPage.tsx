@@ -27,15 +27,29 @@ export default function AuthPage() {
     agreeToTerms: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [platformName, setPlatformName] = useState<string>('')
+  const [footerText, setFooterText] = useState<string>('')
 
-  // Read referral code from URL
+  // Read referral code from URL + fetch platform settings
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const ref = params.get('ref')
       if (ref) setForm((f) => ({ ...f, referralCode: ref }))
     }
-  }, [])
+    // Fetch platform name dynamically
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.platformName) {
+          setPlatformName(locale === 'ar' ? (data.platformNameAr || data.platformName) : data.platformName)
+        }
+        if (data.footerText) {
+          setFooterText(locale === 'ar' ? (data.footerTextAr || data.footerText) : data.footerText)
+        }
+      })
+      .catch(() => {})
+  }, [locale])
 
   const validate = () => {
     const e: Record<string, string> = {}
@@ -353,7 +367,7 @@ export default function AuthPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-white/40 mt-6">
-          © 2026 Crypto Mining Investment Platform
+          {platformName ? `© 2026 ${platformName}` : (footerText || '© 2026 Crypto Mining Investment Platform')}
         </p>
       </motion.div>
     </div>

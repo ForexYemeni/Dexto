@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, hashPassword } from '@/lib/auth'
 
 async function requireAdmin() {
   const payload = await getCurrentUser()
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     case 'reply_ticket': return replyTicket(body, admin.userId)
     case 'close_ticket': return closeTicket(body.ticketId)
     case 'update_settings': return updateSettings(body)
+    case 'update_admin_credentials': return updateAdminCredentials(body, admin.userId)
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 })
@@ -605,3 +606,79 @@ async function updateSettings(body: any) {
   })
   return NextResponse.json({ success: true, settings: updated })
 }
+
+// Update admin email and/or password - completely replaces old credentials
+async function updateAdminCredentials(body: any, adminId: string) {
+  const { newEmail, newPassword, currentPassword } = body
+
+  // Get current admin user
+  const admin = await db.user.findUnique({ where: { id: adminId } })
+  if (!admin || admin.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+
+  // Verify current password for security
+  const { comparePassword } = await import('@/lib/auth')
+  if (currentPassword) {
+    const valid = await comparePassword(currentPassword, admin.passwordHash)
+    if (!valid) {
+      return NextResponse.json({ error: 'current_password_wrong' }, { status: 400 })
+    }
+  } else {
+    return NextResponse.json({ error: 'current_password_required' }, { status: 400 })
+  }
+
+  const updateData: any = {}
+
+  // Update email if provided
+  if (newEmail && newEmail.trim() !== '') {
+    const email = newEmail.toLowerCase().trim()
+    // Check if email is already used by another user
+    const existing = await db.user.findFirst({
+      where: { email, NOT: { id: adminId } },
+    })
+    if (existing) {
+      return NextResponse.json({ error: 'email_already_used' }, { status: 400 })
+    }
+    updateData.email = email
+  }
+
+  // Update password if provided
+  if (newPassword && newPassword.trim() !== '') {
+    if (newPassword.length < 6) {
+      return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
+    }
+    // Hash the new password - completely replaces old hash
+    updateData.passwordHash = await hashPassword(newPassword)
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: 'no_changes' }, { status: 400 })
+  }
+
+  // Update admin user
+  await db.user.update({
+    where: { id: adminId },
+    data: updateData,
+  })
+
+  // Log the security event
+  await db.securityLog.create({
+    data: {
+      userId: adminId,
+      eventType: 'admin_credentials_changed',
+      details: `Changed: ${Object.keys(updateData).join(', ')}`,
+    },
+  })
+
+  // Clear auth cookie to force re-login with new credentials
+  const { clearAuthCookie } = await import('@/lib/auth')
+  await clearAuthCookie()
+
+  return NextResponse.json({
+    success: true,
+    message: 'Credentials updated. Please login again with new credentials.',
+    clearedSession: true,
+  })
+}
+

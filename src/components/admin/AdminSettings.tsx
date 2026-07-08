@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion } from 'framer-motion'
-import { Settings as SettingsIcon, Save, Loader2 } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Loader2, ShieldAlert, KeyRound, Mail } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useAuthStore, useUIStore } from '@/lib/store'
 
 export function AdminSettings() {
   const { t, locale, isRTL } = useI18n()
@@ -12,6 +13,14 @@ export function AdminSettings() {
   const [settings, setSettings] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Admin credentials state
+  const [credForm, setCredForm] = useState({
+    currentPassword: '',
+    newEmail: '',
+    newPassword: '',
+  })
+  const [savingCred, setSavingCred] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin?section=settings')
@@ -35,6 +44,71 @@ export function AdminSettings() {
       toast({ variant: 'destructive', title: t('error') })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleUpdateCredentials = async () => {
+    if (!credForm.currentPassword) {
+      toast({
+        variant: 'destructive',
+        title: t('error'),
+        description: locale === 'ar' ? 'يرجى إدخال كلمة المرور الحالية' : 'Please enter current password',
+      })
+      return
+    }
+    if (!credForm.newEmail && !credForm.newPassword) {
+      toast({
+        variant: 'destructive',
+        title: t('error'),
+        description: locale === 'ar' ? 'يرجى إدخال بريد جديد أو كلمة مرور جديدة' : 'Please enter new email or new password',
+      })
+      return
+    }
+
+    setSavingCred(true)
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_admin_credentials',
+          currentPassword: credForm.currentPassword,
+          newEmail: credForm.newEmail,
+          newPassword: credForm.newPassword,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          current_password_wrong: locale === 'ar' ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect',
+          current_password_required: locale === 'ar' ? 'كلمة المرور الحالية مطلوبة' : 'Current password is required',
+          email_already_used: locale === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already in use',
+          password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)' : 'Password too short (min 6 chars)',
+          no_changes: locale === 'ar' ? 'لا توجد تغييرات' : 'No changes to apply',
+        }
+        toast({
+          variant: 'destructive',
+          title: t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+
+      toast({
+        title: locale === 'ar' ? 'تم تحديث البيانات بنجاح' : 'Credentials updated successfully',
+        description: locale === 'ar' ? 'يرجى تسجيل الدخول مجدداً بالبيانات الجديدة' : 'Please login again with new credentials',
+      })
+
+      // Logout and redirect to login
+      setTimeout(() => {
+        useAuthStore.getState().logout()
+        useUIStore.getState().setView('login')
+        window.location.reload()
+      }, 2000)
+    } catch {
+      toast({ variant: 'destructive', title: t('error') })
+    } finally {
+      setSavingCred(false)
     }
   }
 
@@ -145,6 +219,101 @@ export function AdminSettings() {
         <SettingField label={t('supportPhone')} value={settings.supportPhone} onChange={(v) => update('supportPhone', v)} />
         <SettingField label={t('supportTelegram')} value={settings.supportTelegram} onChange={(v) => update('supportTelegram', v)} />
       </SettingsSection>
+
+      {/* Admin Account - Change Email & Password */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass rounded-2xl p-6 border border-red-500/20"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <ShieldAlert className="w-5 h-5 text-red-400" />
+          <h3 className="text-base font-semibold text-white">
+            {locale === 'ar' ? 'حساب الإدارة' : 'Admin Account'}
+          </h3>
+        </div>
+        <p className="text-xs text-white/40 mb-4">
+          {locale === 'ar'
+            ? 'تغيير البريد الإلكتروني وكلمة المرور الخاصة بالإدارة. سيتم حذف البيانات القديمة نهائياً ويجب تسجيل الدخول مجدداً.'
+            : 'Change admin email and password. Old credentials will be permanently deleted and you must login again.'}
+        </p>
+
+        <div className="space-y-3">
+          {/* Current password (required for security) */}
+          <div>
+            <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+              <KeyRound className="w-3 h-3" />
+              {locale === 'ar' ? 'كلمة المرور الحالية (مطلوبة للتأكيد)' : 'Current Password (required for confirmation)'}
+            </label>
+            <input
+              type="password"
+              value={credForm.currentPassword}
+              onChange={(e) => setCredForm({ ...credForm, currentPassword: e.target.value })}
+              placeholder={locale === 'ar' ? 'أدخل كلمة المرور الحالية' : 'Enter current password'}
+              className="w-full bg-white/5 border border-red-500/20 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-red-500/50"
+            />
+          </div>
+
+          {/* New email */}
+          <div>
+            <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+              <Mail className="w-3 h-3" />
+              {locale === 'ar' ? 'البريد الإلكتروني الجديد' : 'New Email'}
+            </label>
+            <input
+              type="email"
+              value={credForm.newEmail}
+              onChange={(e) => setCredForm({ ...credForm, newEmail: e.target.value })}
+              placeholder={locale === 'ar' ? 'البريد الجديد (اتركه فارغاً لعدم التغيير)' : 'New email (leave empty to keep current)'}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+            />
+          </div>
+
+          {/* New password */}
+          <div>
+            <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+              <KeyRound className="w-3 h-3" />
+              {locale === 'ar' ? 'كلمة المرور الجديدة' : 'New Password'}
+            </label>
+            <input
+              type="password"
+              value={credForm.newPassword}
+              onChange={(e) => setCredForm({ ...credForm, newPassword: e.target.value })}
+              placeholder={locale === 'ar' ? 'كلمة المرور الجديدة (اتركها فارغة لعدم التغيير)' : 'New password (leave empty to keep current)'}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+            />
+            <p className="text-[10px] text-white/40 mt-1">
+              {locale === 'ar' ? '6 أحرف على الأقل' : 'Minimum 6 characters'}
+            </p>
+          </div>
+
+          {/* Warning box */}
+          <div className="glass rounded-xl p-3 bg-red-500/5 border border-red-500/20 flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-white/60 leading-relaxed">
+              {locale === 'ar'
+                ? 'تحذير: سيتم استبدال البريد وكلمة المرور القديمة نهائياً. بعد الحفظ سيتم تسجيل خروجك تلقائياً ويجب تسجيل الدخول بالبيانات الجديدة.'
+                : 'Warning: Old email and password will be permanently replaced. After saving, you will be automatically logged out and must login with the new credentials.'}
+            </p>
+          </div>
+
+          {/* Save button */}
+          <button
+            onClick={handleUpdateCredentials}
+            disabled={savingCred}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-red-500 to-orange-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 hover:scale-[1.02] transition-transform"
+          >
+            {savingCred ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <ShieldAlert className="w-4 h-4" />
+                {locale === 'ar' ? 'تحديث بيانات الإدارة' : 'Update Admin Credentials'}
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
 
       {/* Maintenance */}
       <SettingsSection title={t('maintenance')}>
