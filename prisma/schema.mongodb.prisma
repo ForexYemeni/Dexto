@@ -1,19 +1,18 @@
 // Dexto - Crypto Mining Investment Platform 2026
-// SQLite Schema (for local development)
-// For production with MongoDB Atlas, use: prisma/schema.mongodb.prisma
+// MongoDB Schema (compatible with MongoDB Atlas free tier)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 // ===== Users & Admins =====
 model User {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   email           String   @unique
   name            String
   phone           String?
@@ -46,11 +45,13 @@ model User {
   supportTickets     SupportTicket[]
   activityLogs       ActivityLog[]
   securityLogs       SecurityLog[]
+
+  @@map("users")
 }
 
 // ===== Mining Plans =====
 model MiningPlan {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   name            String
   nameAr          String
   description     String?
@@ -68,11 +69,13 @@ model MiningPlan {
   updatedAt       DateTime @updatedAt
 
   sessions        UserMiningSession[]
+
+  @@map("mining_plans")
 }
 
 // ===== User Mining Sessions (active mining) =====
 model UserMiningSession {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   planId          String
   investmentAmount Float
@@ -88,11 +91,12 @@ model UserMiningSession {
 
   @@index([userId, status])
   @@index([endsAt])
+  @@map("user_mining_sessions")
 }
 
 // ===== Mining History =====
 model MiningHistory {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   planId          String?
   planName        String
@@ -105,11 +109,12 @@ model MiningHistory {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@map("mining_history")
 }
 
 // ===== Wallets (deposit addresses per network) =====
 model Wallet {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   network         String   @unique // TRC20 | ERC20 | BEP20 | Polygon | Solana | Arbitrum | Optimism | TON
   networkAr       String
   address         String
@@ -117,11 +122,13 @@ model Wallet {
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@map("wallets")
 }
 
 // ===== Deposits =====
 model Deposit {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   network         String
   amount          Float
@@ -138,11 +145,12 @@ model Deposit {
 
   @@index([userId, status])
   @@index([status])
+  @@map("deposits")
 }
 
 // ===== Withdrawals =====
 model Withdrawal {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   network         String
   amount          Float
@@ -160,11 +168,12 @@ model Withdrawal {
 
   @@index([userId, status])
   @@index([status])
+  @@map("withdrawals")
 }
 
 // ===== Transactions (general ledger) =====
 model Transaction {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   type            String   // deposit | withdrawal | mining_profit | referral_commission | task_reward | admin_adjustment
   amount          Float    // positive = credit, negative = debit
@@ -176,11 +185,12 @@ model Transaction {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
+  @@map("transactions")
 }
 
 // ===== Referral Commissions =====
 model ReferralCommission {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   referrerId      String   // who receives commission
   referredUserId  String   // who deposited/mined
   level           Int      // 1, 2, or 3
@@ -193,11 +203,12 @@ model ReferralCommission {
   referrer        User     @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
 
   @@index([referrerId])
+  @@map("referral_commissions")
 }
 
 // ===== Tasks (daily missions) =====
 model Task {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   title           String
   titleAr         String
   description     String?
@@ -209,11 +220,13 @@ model Task {
   createdAt       DateTime @default(now())
 
   userTasks       UserTask[]
+
+  @@map("tasks")
 }
 
 // ===== User Tasks (per-user task completion) =====
 model UserTask {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   taskId          String
   status          String   @default("pending") // pending | completed | claimed
@@ -226,13 +239,13 @@ model UserTask {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   task            Task     @relation(fields: [taskId], references: [id])
 
-  @@unique([userId, taskId, createdAt])
   @@index([userId, status])
+  @@map("user_tasks")
 }
 
 // ===== Notifications =====
 model Notification {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   type            String   // deposit | withdrawal | mining | referral | task | system
   title           String
@@ -245,11 +258,12 @@ model Notification {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
+  @@map("notifications")
 }
 
 // ===== Support Tickets =====
 model SupportTicket {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   subject         String
   message         String
@@ -260,11 +274,13 @@ model SupportTicket {
   updatedAt       DateTime @updatedAt
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("support_tickets")
 }
 
 // ===== Activity Logs =====
 model ActivityLog {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String
   action          String   // login | logout | deposit | withdrawal | mining_start | mining_complete | ...
   details         String?
@@ -275,11 +291,12 @@ model ActivityLog {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@map("activity_logs")
 }
 
 // ===== Security Logs =====
 model SecurityLog {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   userId          String?
   eventType       String   // login_attempt | login_success | login_failed | password_change | ...
   ipAddress       String?
@@ -291,20 +308,23 @@ model SecurityLog {
 
   @@index([userId])
   @@index([eventType])
+  @@map("security_logs")
 }
 
 // ===== Platform Settings (key-value store) =====
 model PlatformSetting {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   key             String   @unique
   value           String
   category        String   @default("general") // general | mining | deposit | withdrawal | referral | support
   updatedAt       DateTime @updatedAt
+
+  @@map("platform_settings")
 }
 
 // ===== System Settings (singleton) =====
 model SystemSetting {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   // branding
   platformName    String   @default("Crypto Mining Investment Platform")
   platformNameAr  String   @default("منصة التعدين والاستثمار للعملات الرقمية")
@@ -347,4 +367,6 @@ model SystemSetting {
   faqContentAr    String   @default("")
 
   updatedAt       DateTime @updatedAt
+
+  @@map("system_settings")
 }

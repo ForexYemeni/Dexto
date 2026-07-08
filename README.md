@@ -89,7 +89,7 @@ A premium, production-ready crypto mining & investment SaaS platform with full A
 
 ### Backend
 - **Next.js API Routes**
-- **Prisma ORM** + **SQLite** (production-ready, swappable with PostgreSQL/MySQL)
+- **Prisma ORM** + **MongoDB Atlas** (free cloud database, production-ready)
 - **JWT** + **bcryptjs**
 - **Socket.io** (real-time updates)
 
@@ -124,7 +124,7 @@ cd mini-services/mining-socket && bun install && cd ../..
 # 4. إعداد متغيرات البيئة | Setup environment
 cp .env.example .env
 # قم بتحرير ملف .env وأضف | Edit .env and add:
-# DATABASE_URL="file:./dev.db"
+# DATABASE_URL="mongodb+srv://username:password@cluster.mongodb.net/dexto?retryWrites=true&w=majority"
 # JWT_SECRET="your-super-secret-key-here"
 
 # 5. تهيئة قاعدة البيانات | Initialize database
@@ -166,23 +166,45 @@ bun run dev
 2. اذهب إلى [vercel.com](https://vercel.com)
 3. استورد المستودع
 4. أضف متغيرات البيئة:
-   - `DATABASE_URL` - رابط قاعدة البيانات (PostgreSQL موصى به للإنتاج)
+   - `DATABASE_URL` - رابط MongoDB Atlas (انظر القسم التالي)
    - `JWT_SECRET` - مفتاح JWT قوي
+   - `NODE_ENV` = `production`
 5. انشر
 
-### قاعدة البيانات للإنتاج | Production Database
+### قاعدة البيانات: MongoDB Atlas (مجاني بالكامل) | Database: MongoDB Atlas (Free)
 
-للإنتاج، يُوصى باستخدام PostgreSQL أو MySQL بدلاً من SQLite:
+المنصة تستخدم **MongoDB Atlas** (النسخة المجانية M0) - الأنسب لـ Vercel:
 
-1. حدّث `prisma/schema.prisma`:
-   ```prisma
-   datasource db {
-     provider = "postgresql"  // أو "mysql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. حدّث `DATABASE_URL` في `.env`
-3. شغّل `bun run db:push`
+#### إعداد MongoDB Atlas خطوة بخطوة | Step-by-step MongoDB Atlas Setup
+
+1. **إنشاء حساب**: اذهب إلى https://www.mongodb.com/cloud/atlas/register
+2. **إنشاء قاعدة بيانات**: اختر **M0 Free** (مجاني بالكامل، 512 MB)
+3. **إنشاء مستخدم**: 
+   - Database Access → Add New Database User
+   - Username: `dexto_admin`
+   - Password: اختر كلمة مرور قوية واحفظها
+4. **السماح بالاتصال**:
+   - Network Access → Add IP Address → Allow Access From Anywhere (`0.0.0.0/0`)
+5. **الحصول على رابط الاتصال**:
+   - Database → Connect → Drivers → Node.js
+   - انسخ الـ Connection String
+   - استبدل `<password>` بكلمة المرور
+   - أضف `/dexto` قبل `?` لتحديد اسم قاعدة البيانات
+
+#### تنسيق رابط الاتصال | Connection String Format
+
+```
+mongodb+srv://dexto_admin:YOUR_PASSWORD@cluster0.abc123.mongodb.net/dexto?retryWrites=true&w=majority&appName=Cluster0
+```
+
+#### لماذا MongoDB Atlas؟ | Why MongoDB Atlas?
+
+- ✅ **مجاني بالكامل** (512 MB - يكفي لآلاف المستخدمين)
+- ✅ **متوافق 100% مع Vercel** (Serverless-friendly)
+- ✅ **سحابي بالكامل** (لا حاجة لإدارة خادم)
+- ✅ **نسخ احتياطي تلقائي**
+- ✅ **توسع تلقائي**
+- ✅ **لوحة تحكم احترافية**
 
 ---
 
