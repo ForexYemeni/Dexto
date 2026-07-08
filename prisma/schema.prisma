@@ -1,0 +1,348 @@
+// Crypto Mining Investment Platform 2026 - Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Users & Admins =====
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  phone           String?
+  passwordHash    String
+  referralCode    String   @unique
+  referredBy      String?  // referralCode of inviter
+  balance         Float    @default(0)        // USDT balance
+  totalInvested   Float    @default(0)
+  totalProfit     Float    @default(0)
+  todayProfit     Float    @default(0)
+  monthProfit     Float    @default(0)
+  referralProfit  Float    @default(0)
+  status          String   @default("active") // active | suspended | deleted
+  role            String   @default("user")   // user | admin
+  language        String   @default("ar")     // ar | en
+  theme           String   @default("dark")   // dark | light
+  avatar          String?
+  lastLoginAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  miningSessions   UserMiningSession[]
+  miningHistory    MiningHistory[]
+  deposits         Deposit[]
+  withdrawals      Withdrawal[]
+  transactions     Transaction[]
+  referralCommissions ReferralCommission[] @relation("referrer")
+  userTasks        UserTask[]
+  notifications    Notification[]
+  supportTickets   SupportTicket[]
+  activityLogs     ActivityLog[]
+  securityLogs     SecurityLog[]
+}
+
+// ===== Mining Plans =====
+model MiningPlan {
+  id              String   @id @default(cuid())
+  name            String
+  nameAr          String
+  description     String?
+  descriptionAr   String?
+  price           Float    // minimum investment in USDT
+  dailyProfitRate Float    // e.g., 0.02 = 2%
+  durationHours   Int      @default(24)
+  minInvestment   Float    @default(50)
+  maxInvestment   Float    @default(10000)
+  color           String   @default("#3B82F6")
+  icon            String   @default("gem")
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions        UserMiningSession[]
+}
+
+// ===== User Mining Sessions (active mining) =====
+model UserMiningSession {
+  id              String   @id @default(cuid())
+  userId          String
+  planId          String
+  investmentAmount Float
+  expectedProfit  Float
+  startedAt       DateTime
+  endsAt          DateTime
+  status          String   @default("active") // active | completed | cancelled
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            MiningPlan @relation(fields: [planId], references: [id])
+
+  @@index([userId, status])
+  @@index([endsAt])
+}
+
+// ===== Mining History =====
+model MiningHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  planId          String?
+  planName        String
+  investmentAmount Float
+  profitAmount    Float
+  startedAt       DateTime
+  completedAt     DateTime
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ===== Wallets (deposit addresses per network) =====
+model Wallet {
+  id              String   @id @default(cuid())
+  network         String   @unique // TRC20 | ERC20 | BEP20 | Polygon | Solana | Arbitrum | Optimism | TON
+  networkAr       String
+  address         String
+  qrCode          String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ===== Deposits =====
+model Deposit {
+  id              String   @id @default(cuid())
+  userId          String
+  network         String
+  amount          Float
+  txHash          String?
+  walletAddress   String   // platform deposit address
+  status          String   @default("pending") // pending | confirmed | rejected | completed
+  note            String?
+  reviewedBy      String?  // admin id
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ===== Withdrawals =====
+model Withdrawal {
+  id              String   @id @default(cuid())
+  userId          String
+  network         String
+  amount          Float
+  fee             Float    @default(0)
+  netAmount       Float    @default(0)
+  walletAddress   String   // user withdrawal address
+  status          String   @default("pending") // pending | approved | rejected | completed
+  note            String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ===== Transactions (general ledger) =====
+model Transaction {
+  id              String   @id @default(cuid())
+  userId          String
+  type            String   // deposit | withdrawal | mining_profit | referral_commission | task_reward | admin_adjustment
+  amount          Float    // positive = credit, negative = debit
+  status          String   @default("completed") // pending | completed | failed
+  description     String?
+  reference       String?  // related entity id (deposit/withdrawal/session)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// ===== Referral Commissions =====
+model ReferralCommission {
+  id              String   @id @default(cuid())
+  referrerId      String   // who receives commission
+  referredUserId  String   // who deposited/mined
+  level           Int      // 1, 2, or 3
+  percentage      Float    // 0.10, 0.05, 0.02
+  amount          Float
+  sourceType      String   // deposit | mining_profit
+  sourceId        String?
+  createdAt       DateTime @default(now())
+
+  referrer        User     @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId])
+}
+
+// ===== Tasks (daily missions) =====
+model Task {
+  id              String   @id @default(cuid())
+  title           String
+  titleAr         String
+  description     String?
+  descriptionAr   String?
+  type            String   // daily_login | share_link | invite_user | custom
+  rewardAmount    Float    @default(0)
+  rewardPoints    Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  userTasks       UserTask[]
+}
+
+// ===== User Tasks (per-user task completion) =====
+model UserTask {
+  id              String   @id @default(cuid())
+  userId          String
+  taskId          String
+  status          String   @default("pending") // pending | completed | claimed
+  completedAt     DateTime?
+  claimedAt       DateTime?
+  rewardAmount    Float    @default(0)
+  rewardPoints    Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task            Task     @relation(fields: [taskId], references: [id])
+
+  @@unique([userId, taskId, createdAt])
+  @@index([userId, status])
+}
+
+// ===== Notifications =====
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  type            String   // deposit | withdrawal | mining | referral | task | system
+  title           String
+  titleAr         String
+  message         String
+  messageAr       String
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+// ===== Support Tickets =====
+model SupportTicket {
+  id              String   @id @default(cuid())
+  userId          String
+  subject         String
+  message         String
+  reply           String?
+  status          String   @default("open") // open | replied | closed
+  priority        String   @default("normal") // low | normal | high
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ===== Activity Logs =====
+model ActivityLog {
+  id              String   @id @default(cuid())
+  userId          String
+  action          String   // login | logout | deposit | withdrawal | mining_start | mining_complete | ...
+  details         String?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ===== Security Logs =====
+model SecurityLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  eventType       String   // login_attempt | login_success | login_failed | password_change | ...
+  ipAddress       String?
+  userAgent       String?
+  details         String?
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([eventType])
+}
+
+// ===== Platform Settings (singleton-like) =====
+model PlatformSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  category        String   @default("general") // general | mining | deposit | withdrawal | referral | support
+  updatedAt       DateTime @updatedAt
+}
+
+// ===== System Settings (singleton) =====
+model SystemSetting {
+  id              String   @id @default(cuid())
+  // branding
+  platformName    String   @default("Crypto Mining Investment Platform")
+  platformNameAr  String   @default("منصة التعدين والاستثمار للعملات الرقمية")
+  logo            String?
+  favicon         String?
+  primaryColor    String   @default("#3B82F6")
+  accentColor     String   @default("#A855F7")
+  defaultLanguage String   @default("ar")
+  // mining
+  globalMiningDuration Int  @default(24)
+  globalMiningProfitRate Float @default(0.02)
+  // withdrawal
+  minWithdrawal   Float    @default(10)
+  withdrawalFee   Float    @default(1)  // percentage
+  withdrawalFeeType String @default("percent") // percent | fixed
+  autoApproveWithdrawal Boolean @default(false)
+  // deposit
+  minDeposit      Float    @default(10)
+  autoApproveDeposit Boolean @default(false)
+  // referral
+  referralLevel1  Float    @default(0.10)
+  referralLevel2  Float    @default(0.05)
+  referralLevel3  Float    @default(0.02)
+  // support
+  supportEmail    String   @default("support@cryptomining.io")
+  supportPhone    String   @default("")
+  supportTelegram String   @default("")
+  // maintenance
+  maintenanceMode Boolean  @default(false)
+  maintenanceMessage String @default("")
+  // footer
+  footerText      String   @default("© 2026 Crypto Mining Investment Platform. All rights reserved.")
+  footerTextAr    String   @default("© 2026 منصة التعدين والاستثمار للعملات الرقمية. جميع الحقوق محفوظة.")
+  // terms
+  termsContent    String   @default("")
+  termsContentAr  String   @default("")
+  privacyContent  String   @default("")
+  privacyContentAr String  @default("")
+  faqContent      String   @default("")
+  faqContentAr    String   @default("")
+
+  updatedAt       DateTime @updatedAt
+}
