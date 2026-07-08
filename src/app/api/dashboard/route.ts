@@ -168,19 +168,32 @@ export async function processCompletedMining(userId: string) {
         },
       })
 
-      // Add profit to user balance
+      // Return capital + add profit to user balance
       const profit = session.expectedProfit
+      const capital = session.investmentAmount
       await tx.user.update({
         where: { id: userId },
         data: {
-          balance: { increment: profit },
+          balance: { increment: capital + profit },
           totalProfit: { increment: profit },
           todayProfit: { increment: profit },
           monthProfit: { increment: profit },
         },
       })
 
-      // Record transaction
+      // Record capital return transaction
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'mining_profit',
+          amount: capital,
+          status: 'completed',
+          description: `Capital returned - ${session.plan.name}`,
+          reference: session.id,
+        },
+      })
+
+      // Record profit transaction
       await tx.transaction.create({
         data: {
           userId,
@@ -212,8 +225,8 @@ export async function processCompletedMining(userId: string) {
           type: 'mining',
           title: 'Mining Completed!',
           titleAr: 'اكتمل التعدين!',
-          message: `Your mining session for ${session.plan.name} has completed. You earned ${profit.toFixed(2)} USDT.`,
-          messageAr: `اكتملت جلسة التعدين لخطة ${session.plan.nameAr}. لقد ربحت ${profit.toFixed(2)} USDT.`,
+          message: `Your mining session for ${session.plan.name} has completed. Capital returned (${capital.toFixed(2)} USDT) + profit (${profit.toFixed(2)} USDT).`,
+          messageAr: `اكتملت جلسة التعدين لخطة ${session.plan.nameAr}. تم إرجاع رأس المال (${capital.toFixed(2)} USDT) + الأرباح (${profit.toFixed(2)} USDT).`,
         },
       })
 

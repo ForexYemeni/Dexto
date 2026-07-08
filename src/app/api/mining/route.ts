@@ -87,8 +87,6 @@ export async function POST(req: NextRequest) {
 
   if (action === 'start') {
     return startMining(payload.userId, planId, investmentAmount)
-  } else if (action === 'stop') {
-    return stopMining(payload.userId, body.sessionId)
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 })
@@ -195,37 +193,3 @@ async function startMining(userId: string, planId: string, investmentAmount: num
   })
 }
 
-async function stopMining(userId: string, sessionId: string) {
-  const session = await db.userMiningSession.findFirst({
-    where: { id: sessionId, userId, status: 'active' },
-  })
-  if (!session) {
-    return NextResponse.json({ error: 'session_not_found' }, { status: 404 })
-  }
-
-  // Stop mining - refund investment, no profit
-  await db.$transaction(async (tx) => {
-    await tx.userMiningSession.update({
-      where: { id: sessionId },
-      data: { status: 'cancelled', completedAt: new Date() },
-    })
-
-    await tx.user.update({
-      where: { id: userId },
-      data: {
-        balance: { increment: session.investmentAmount },
-        totalInvested: { decrement: session.investmentAmount },
-      },
-    })
-
-    await tx.activityLog.create({
-      data: {
-        userId,
-        action: 'mining_stop',
-        details: `Session: ${sessionId}`,
-      },
-    })
-  })
-
-  return NextResponse.json({ success: true })
-}

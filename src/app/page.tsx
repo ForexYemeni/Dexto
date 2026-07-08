@@ -16,6 +16,14 @@ import { NotificationsView } from '@/components/notifications/NotificationsView'
 import { SupportView } from '@/components/support/SupportView'
 import { LegalView, ProfileView } from '@/components/legal/LegalViews'
 import { AdminView } from '@/components/admin/AdminView'
+import { AdminDashboard } from '@/components/admin/AdminDashboard'
+import { AdminUsers } from '@/components/admin/AdminUsers'
+import { AdminPlans } from '@/components/admin/AdminPlans'
+import { AdminPayments } from '@/components/admin/AdminPayments'
+import { AdminWallets } from '@/components/admin/AdminWallets'
+import { AdminTickets } from '@/components/admin/AdminTickets'
+import { AdminSettings } from '@/components/admin/AdminSettings'
+import { AdminLogs } from '@/components/admin/AdminLogs'
 import { initSocket } from '@/lib/socket-client'
 import { Toaster } from '@/components/ui/sonner'
 
@@ -90,6 +98,22 @@ export default function Home() {
 
   // Render current view
   const renderView = () => {
+    // Admin views - only accessible to admins
+    if (user?.role === 'admin') {
+      switch (view) {
+        case 'admin': return <AdminDashboard />
+        case 'admin_users': return <AdminUsers />
+        case 'admin_plans': return <AdminPlans />
+        case 'admin_payments': return <AdminPayments />
+        case 'admin_wallets': return <AdminWallets />
+        case 'admin_tickets': return <AdminTickets />
+        case 'admin_settings': return <AdminSettings />
+        case 'admin_logs': return <AdminLogs />
+        default: return <AdminDashboard />
+      }
+    }
+
+    // User views
     switch (view) {
       case 'dashboard': return <DashboardView />
       case 'mining': return <MiningView />
@@ -104,7 +128,6 @@ export default function Home() {
       case 'terms': return <LegalView type="terms" />
       case 'privacy': return <LegalView type="privacy" />
       case 'profile': return <ProfileView />
-      case 'admin': return user?.role === 'admin' ? <AdminView /> : <DashboardView />
       default: return <DashboardView />
     }
   }

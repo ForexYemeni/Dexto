@@ -131,13 +131,10 @@ async function login(req: NextRequest, body: any) {
 }
 
 async function register(req: NextRequest, body: any) {
-  const { name, email, password, confirmPassword, phone, referralCode, agreeToTerms } = body
+  const { name, email, password, referralCode, agreeToTerms } = body
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
-  }
-  if (password !== confirmPassword) {
-    return NextResponse.json({ error: 'password_mismatch' }, { status: 400 })
   }
   if (!agreeToTerms) {
     return NextResponse.json({ error: 'must_agree_terms' }, { status: 400 })
@@ -166,7 +163,7 @@ async function register(req: NextRequest, body: any) {
     data: {
       email: email.toLowerCase(),
       name,
-      phone: phone || null,
+      phone: null,
       passwordHash,
       referralCode: newReferralCode,
       referredBy: referralCode || null,

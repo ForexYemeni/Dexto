@@ -6,22 +6,21 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Pickaxe, ArrowDownToLine, ArrowUpFromLine,
   Wallet, Users, CheckSquare, Bell, LifeBuoy, HelpCircle,
-  FileText, ShieldCheck, Settings, LogOut, X, Bitcoin, Globe,
-  Moon, Sun, Menu, ChevronLeft, ChevronRight, User,
+  FileText, ShieldCheck, LogOut, X, Bitcoin, Globe,
+  Moon, Sun, User, Settings as SettingsIcon, DollarSign,
+  Activity,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useSocket } from '@/lib/socket-client'
 import { formatCurrency } from '@/lib/time-utils'
 
 interface NavItem {
   view: string
   label: string
   icon: React.ReactNode
-  adminOnly?: boolean
+  badge?: number
 }
 
 export function Sidebar() {
-  const { t, isRTL } = useI18n()
+  const { t, isRTL, locale } = useI18n()
   const { view, setView, sidebarOpen, setSidebarOpen } = useUIStore()
   const { user } = useAuthStore()
   const { unreadCount } = useNotificationStore()
@@ -29,6 +28,19 @@ export function Sidebar() {
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const logout = useAuthStore((s) => s.logout)
 
+  // Admin navigation - ONLY admin sections
+  const adminNav: NavItem[] = [
+    { view: 'admin', label: t('adminDashboard'), icon: <LayoutDashboard className="w-5 h-5" /> },
+    { view: 'admin_users', label: t('userManagement'), icon: <Users className="w-5 h-5" /> },
+    { view: 'admin_plans', label: t('miningManagement'), icon: <Pickaxe className="w-5 h-5" /> },
+    { view: 'admin_payments', label: t('paymentManagement'), icon: <DollarSign className="w-5 h-5" /> },
+    { view: 'admin_wallets', label: t('networks'), icon: <Wallet className="w-5 h-5" /> },
+    { view: 'admin_tickets', label: t('supportTickets'), icon: <LifeBuoy className="w-5 h-5" /> },
+    { view: 'admin_settings', label: t('platformSettings'), icon: <SettingsIcon className="w-5 h-5" /> },
+    { view: 'admin_logs', label: t('securityLogs'), icon: <ShieldCheck className="w-5 h-5" /> },
+  ]
+
+  // User navigation - only shown for regular users
   const userNav: NavItem[] = [
     { view: 'dashboard', label: t('dashboard'), icon: <LayoutDashboard className="w-5 h-5" /> },
     { view: 'mining', label: t('mining'), icon: <Pickaxe className="w-5 h-5" /> },
@@ -37,7 +49,7 @@ export function Sidebar() {
     { view: 'wallet', label: t('wallet'), icon: <Wallet className="w-5 h-5" /> },
     { view: 'referrals', label: t('referrals'), icon: <Users className="w-5 h-5" /> },
     { view: 'tasks', label: t('tasks'), icon: <CheckSquare className="w-5 h-5" /> },
-    { view: 'notifications', label: t('notifications'), icon: <Bell className="w-5 h-5" /> },
+    { view: 'notifications', label: t('notifications'), icon: <Bell className="w-5 h-5" />, badge: unreadCount },
     { view: 'support', label: t('support'), icon: <LifeBuoy className="w-5 h-5" /> },
     { view: 'faq', label: t('faq'), icon: <HelpCircle className="w-5 h-5" /> },
     { view: 'terms', label: t('terms'), icon: <FileText className="w-5 h-5" /> },
@@ -45,11 +57,8 @@ export function Sidebar() {
     { view: 'profile', label: t('profile'), icon: <User className="w-5 h-5" /> },
   ]
 
-  const adminNav: NavItem[] = [
-    { view: 'admin', label: t('adminDashboard'), icon: <LayoutDashboard className="w-5 h-5" /> },
-  ]
-
-  const nav = user?.role === 'admin' ? [...adminNav, ...userNav] : userNav
+  const isAdmin = user?.role === 'admin'
+  const nav = isAdmin ? adminNav : userNav
 
   const handleLogout = async () => {
     await fetch('/api/auth', {
@@ -90,9 +99,11 @@ export function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold text-white truncate">
-                {useUIStore.getState().locale === 'ar' ? 'منصة التعدين' : 'Mining Platform'}
+                {locale === 'ar' ? 'منصة التعدين' : 'Mining Platform'}
               </h1>
-              <p className="text-[10px] text-white/50 truncate">2026 Premium</p>
+              <p className="text-[10px] text-white/50 truncate">
+                {isAdmin ? (locale === 'ar' ? 'لوحة الإدارة' : 'Admin Panel') : '2026 Premium'}
+              </p>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -103,14 +114,14 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Balance card */}
-        {user && (
+        {/* Balance card - only for regular users */}
+        {!isAdmin && user && (
           <div className="p-4">
             <div className="glass rounded-2xl p-4 relative overflow-hidden">
               <div className="absolute -right-6 -top-6 w-20 h-20 bg-blue-500/20 rounded-full blur-2xl" />
               <p className="text-[10px] text-white/60 mb-1">{t('balance')}</p>
               <p className="text-2xl font-bold gradient-text-electric tabular-nums">
-                {formatCurrency(user.balance, useUIStore.getState().locale)}
+                {formatCurrency(user.balance, locale)}
               </p>
               <p className="text-xs text-white/40 mt-1">USDT</p>
             </div>
@@ -119,32 +130,19 @@ export function Sidebar() {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto custom-scroll px-3 pb-4">
-          {user?.role === 'admin' && (
-            <div className="mb-2">
-              <p className="text-[10px] uppercase tracking-wider text-white/40 px-3 py-2">{t('admin')}</p>
-              {adminNav.map((item) => (
-                <NavButton key={item.view} item={item} active={view === item.view} onClick={() => setView(item.view)} />
-              ))}
-            </div>
-          )}
-
           <div className="mb-2">
-            <p className="text-[10px] uppercase tracking-wider text-white/40 px-3 py-2">{t('overview')}</p>
-            {userNav.slice(0, 8).map((item) => (
+            <p className="text-[10px] uppercase tracking-wider text-white/40 px-3 py-2">
+              {isAdmin ? (locale === 'ar' ? 'الإدارة' : 'Administration') : (locale === 'ar' ? 'القائمة' : 'Menu')}
+            </p>
+            {nav.map((item) => (
               <NavButton
                 key={item.view}
                 item={item}
                 active={view === item.view}
-                onClick={() => setView(item.view)}
-                badge={item.view === 'notifications' && unreadCount > 0 ? unreadCount : undefined}
+                onClick={() => setView(item.view as any)}
+                badge={item.badge}
+                isRTL={isRTL}
               />
-            ))}
-          </div>
-
-          <div className="mb-2">
-            <p className="text-[10px] uppercase tracking-wider text-white/40 px-3 py-2">{t('support')}</p>
-            {userNav.slice(8).map((item) => (
-              <NavButton key={item.view} item={item} active={view === item.view} onClick={() => setView(item.view)} />
             ))}
           </div>
         </nav>
@@ -157,14 +155,14 @@ export function Sidebar() {
               className="flex-1 glass rounded-xl py-2.5 px-3 flex items-center justify-center gap-2 text-xs text-white/80 hover:bg-white/10 transition-colors"
             >
               <Globe className="w-4 h-4" />
-              {useUIStore.getState().locale === 'ar' ? 'EN' : 'ع'}
+              {locale === 'ar' ? 'EN' : 'ع'}
             </button>
             <button
               onClick={toggleTheme}
               className="flex-1 glass rounded-xl py-2.5 px-3 flex items-center justify-center gap-2 text-xs text-white/80 hover:bg-white/10 transition-colors"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              {theme === 'dark' ? (useUIStore.getState().locale === 'ar' ? 'فاتح' : 'Light') : (useUIStore.getState().locale === 'ar' ? 'داكن' : 'Dark')}
+              {theme === 'dark' ? (locale === 'ar' ? 'فاتح' : 'Light') : (locale === 'ar' ? 'داكن' : 'Dark')}
             </button>
           </div>
           <button
@@ -180,7 +178,7 @@ export function Sidebar() {
   )
 }
 
-function NavButton({ item, active, onClick, badge }: { item: NavItem; active: boolean; onClick: () => void; badge?: number }) {
+function NavButton({ item, active, onClick, badge, isRTL }: { item: NavItem; active: boolean; onClick: () => void; badge?: number; isRTL: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -193,7 +191,7 @@ function NavButton({ item, active, onClick, badge }: { item: NavItem; active: bo
       {active && (
         <motion.div
           layoutId="active-nav"
-          className={`absolute ${useUIStore.getState().locale === 'ar' ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full`}
+          className={`absolute ${isRTL ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full`}
         />
       )}
       <span className={active ? 'text-blue-400' : 'text-white/60 group-hover:text-white'}>{item.icon}</span>
@@ -208,11 +206,12 @@ function NavButton({ item, active, onClick, badge }: { item: NavItem; active: bo
 }
 
 export function TopBar() {
-  const { t, isRTL } = useI18n()
+  const { t, isRTL, locale } = useI18n()
   const { setSidebarOpen, view } = useUIStore()
   const { user } = useAuthStore()
   const { unreadCount } = useNotificationStore()
   const setView = useUIStore((s) => s.setView)
+  const isAdmin = user?.role === 'admin'
 
   const titleMap: Record<string, string> = {
     dashboard: t('dashboard'),
@@ -228,7 +227,14 @@ export function TopBar() {
     terms: t('terms'),
     privacy: t('privacy'),
     profile: t('profile'),
-    admin: t('adminPanel'),
+    admin: t('adminDashboard'),
+    admin_users: t('userManagement'),
+    admin_plans: t('miningManagement'),
+    admin_payments: t('paymentManagement'),
+    admin_wallets: t('networks'),
+    admin_tickets: t('supportTickets'),
+    admin_settings: t('platformSettings'),
+    admin_logs: t('securityLogs'),
   }
 
   return (
@@ -238,12 +244,12 @@ export function TopBar() {
           onClick={() => setSidebarOpen(true)}
           className="lg:hidden glass rounded-xl p-2 text-white"
         >
-          <Menu className="w-5 h-5" />
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
         <div>
           <h2 className="text-lg font-bold text-white">{titleMap[view] || ''}</h2>
           <p className="text-[10px] text-white/40">
-            {new Date().toLocaleDateString(useUIStore.getState().locale === 'ar' ? 'ar-SA' : 'en-US', {
+            {new Date().toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US', {
               weekday: 'long',
               year: 'numeric',
               month: 'long',
@@ -254,17 +260,20 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setView('notifications')}
-          className="relative glass rounded-xl p-2.5 text-white hover:bg-white/10 transition-colors"
-        >
-          <Bell className="w-5 h-5" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-              {unreadCount}
-            </span>
-          )}
-        </button>
+        {/* Show notifications bell only for regular users */}
+        {!isAdmin && (
+          <button
+            onClick={() => setView('notifications')}
+            className="relative glass rounded-xl p-2.5 text-white hover:bg-white/10 transition-colors"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <div className="glass rounded-xl p-2 flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
@@ -272,7 +281,9 @@ export function TopBar() {
           </div>
           <div className="hidden md:block pe-2">
             <p className="text-xs font-medium text-white">{user?.name}</p>
-            <p className="text-[10px] text-white/40">{user?.email}</p>
+            <p className="text-[10px] text-white/40">
+              {isAdmin ? (locale === 'ar' ? 'مدير' : 'Admin') : user?.email}
+            </p>
           </div>
         </div>
       </div>

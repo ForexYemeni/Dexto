@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, Mail, Lock, User, Phone, Gift, ShieldCheck, Sparkles, TrendingUp, Globe, Moon, Sun, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Bitcoin } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, User, Gift, ShieldCheck, Sparkles, TrendingUp, Globe, Moon, Sun, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Bitcoin } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Field } from '@/components/shared/Field'
 
@@ -22,9 +22,7 @@ export default function AuthPage() {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    phone: '',
     password: '',
-    confirmPassword: '',
     referralCode: '',
     agreeToTerms: false,
   })
@@ -45,7 +43,6 @@ export default function AuthPage() {
     if (!form.email) e.email = t('email')
     if (!form.password) e.password = t('password')
     if (mode === 'register') {
-      if (form.password !== form.confirmPassword) e.confirmPassword = t('passwordMismatch')
       if (!form.agreeToTerms) e.agreeToTerms = t('mustAgreeTerms')
       if (form.password.length < 6) e.password = t('error')
     }
@@ -68,9 +65,7 @@ export default function AuthPage() {
         Object.assign(payload, {
           name: form.name,
           email: form.email,
-          phone: form.phone,
           password: form.password,
-          confirmPassword: form.confirmPassword,
           referralCode: form.referralCode,
           agreeToTerms: form.agreeToTerms,
         })
@@ -223,17 +218,6 @@ export default function AuthPage() {
               isRTL={isRTL}
             />
 
-            {mode === 'register' && (
-              <Field
-                icon={<Phone className="w-4 h-4" />}
-                placeholder={`${t('phone')} (${t('optional')})`}
-                value={form.phone}
-                onChange={(v) => setForm({ ...form, phone: v })}
-                type="tel"
-                isRTL={isRTL}
-              />
-            )}
-
             {mode !== 'forgot' && (
               <div className="relative">
                 <Field
@@ -257,15 +241,6 @@ export default function AuthPage() {
 
             {mode === 'register' && (
               <>
-                <Field
-                  icon={<Lock className="w-4 h-4" />}
-                  placeholder={t('confirmPassword')}
-                  value={form.confirmPassword}
-                  onChange={(v) => setForm({ ...form, confirmPassword: v })}
-                  error={errors.confirmPassword}
-                  type={showPassword ? 'text' : 'password'}
-                  isRTL={isRTL}
-                />
                 <Field
                   icon={<Gift className="w-4 h-4" />}
                   placeholder={`${t('referralCode')} (${t('optional')})`}

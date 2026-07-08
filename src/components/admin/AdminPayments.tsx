@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion } from 'framer-motion'
 import {
-  Check, X, Clock, ArrowDownToLine, ArrowUpFromLine, Loader2,
+  Check, X, Clock, ArrowDownToLine, ArrowUpFromLine, Loader2, Copy,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, timeAgo } from '@/lib/time-utils'
@@ -94,7 +94,7 @@ export function AdminPayments() {
                 <th className="p-3 text-start font-medium">{t('name')}</th>
                 <th className="p-3 text-start font-medium">{t('network')}</th>
                 <th className="p-3 text-start font-medium">{t('amount')}</th>
-                <th className="p-3 text-start font-medium hidden md:table-cell">{t('walletAddress')}</th>
+                <th className="p-3 text-start font-medium">{tab === 'withdrawals' ? t('withdrawalAddress') : t('walletAddress')}</th>
                 <th className="p-3 text-start font-medium">{t('status')}</th>
                 <th className="p-3 text-end font-medium">{t('edit')}</th>
               </tr>
@@ -118,10 +118,22 @@ export function AdminPayments() {
                         <p className="text-[10px] text-white/40">{locale === 'ar' ? 'صافي' : 'Net'}: {formatCurrency(item.netAmount, locale)}</p>
                       )}
                     </td>
-                    <td className="p-3 hidden md:table-cell">
-                      <code className="text-[10px] text-white/40 font-mono">{item.walletAddress.slice(0, 16)}...</code>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-[10px] text-white/70 font-mono break-all max-w-[180px]">{item.walletAddress}</code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard?.writeText(item.walletAddress)
+                            toast({ title: t('copied') })
+                          }}
+                          className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
+                          title={t('copyAddress')}
+                        >
+                          <Copy className="w-3 h-3 text-white/60" />
+                        </button>
+                      </div>
                       {item.txHash && (
-                        <p className="text-[10px] text-white/40 font-mono">TX: {item.txHash.slice(0, 16)}...</p>
+                        <p className="text-[10px] text-white/40 font-mono mt-1 break-all max-w-[180px]">TX: {item.txHash}</p>
                       )}
                     </td>
                     <td className="p-3">

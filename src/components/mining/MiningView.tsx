@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Pickaxe, Clock, TrendingUp, Zap, Award, Gem, Crown, Diamond,
-  Check, Loader2, AlertCircle, Play, Square, Timer, Sparkles,
+  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles,
 } from 'lucide-react'
 import { formatCurrency, formatMeccaTime } from '@/lib/time-utils'
 import { useToast } from '@/hooks/use-toast'
@@ -106,22 +106,6 @@ export function MiningView() {
     }
   }
 
-  const handleStopMining = async (sessionId: string) => {
-    try {
-      const res = await fetch('/api/mining', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop', sessionId }),
-      })
-      if (res.ok) {
-        toast({ title: locale === 'ar' ? 'تم إيقاف التعدين' : 'Mining stopped' })
-        fetchData()
-      }
-    } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
-    }
-  }
-
   if (loading || !data) {
     return (
       <div className="space-y-4">
@@ -156,7 +140,6 @@ export function MiningView() {
               <ActiveMiningCard
                 key={session.id}
                 session={session}
-                onStop={() => handleStopMining(session.id)}
               />
             ))}
           </div>
@@ -424,7 +407,7 @@ export function MiningView() {
   )
 }
 
-function ActiveMiningCard({ session, onStop }: { session: any; onStop: () => void }) {
+function ActiveMiningCard({ session }: { session: any }) {
   const { t, locale, isRTL } = useI18n()
   const [now, setNow] = useState(Date.now())
 
@@ -527,14 +510,15 @@ function ActiveMiningCard({ session, onStop }: { session: any; onStop: () => voi
           </div>
         </div>
 
-        {/* Stop button */}
-        <button
-          onClick={onStop}
-          className="w-full py-2.5 rounded-xl glass text-red-400 text-xs font-medium hover:bg-red-500/10 transition-colors flex items-center justify-center gap-2"
-        >
-          <Square className="w-3.5 h-3.5" />
-          {t('stopMining')}
-        </button>
+        {/* Capital locked notice */}
+        <div className="glass rounded-xl p-3 bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+          <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-[10px] text-white/60 leading-relaxed">
+            {locale === 'ar'
+              ? `رأس المال (${formatCurrency(session.investmentAmount, locale)} USDT) مقفل حتى انتهاء التعدين. سيتم إرجاعه مع الأرباح تلقائياً عند الاكتمال.`
+              : `Capital (${formatCurrency(session.investmentAmount, locale)} USDT) is locked until mining ends. It will be returned with profits automatically upon completion.`}
+          </p>
+        </div>
       </div>
     </motion.div>
   )
