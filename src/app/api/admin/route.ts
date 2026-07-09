@@ -424,16 +424,65 @@ async function adjustBalance(body: any) {
 }
 
 async function createPlan(body: any) {
-  // Remove id, createdAt, updatedAt - they should not be set manually
-  const { id, createdAt, updatedAt, ...planData } = body
-  const plan = await db.miningPlan.create({ data: planData })
-  return NextResponse.json({ success: true, plan })
+  try {
+    // Remove id, createdAt, updatedAt - they should not be set manually
+    const { id, createdAt, updatedAt, ...planData } = body
+
+    // Ensure required fields
+    const safeData = {
+      name: planData.name || 'New Plan',
+      nameAr: planData.nameAr || 'خطة جديدة',
+      description: planData.description || null,
+      descriptionAr: planData.descriptionAr || null,
+      price: Number(planData.price) || Number(planData.minInvestment) || 50,
+      dailyProfitRate: Number(planData.dailyProfitRate) || 0.02,
+      durationHours: Number(planData.durationHours) || 24,
+      minInvestment: Number(planData.minInvestment) || 50,
+      maxInvestment: Number(planData.maxInvestment) || 1000,
+      color: planData.color || '#3B82F6',
+      icon: planData.icon || 'pickaxe',
+      isActive: planData.isActive !== undefined ? planData.isActive : true,
+      sortOrder: Number(planData.sortOrder) || 0,
+    }
+
+    const plan = await db.miningPlan.create({ data: safeData })
+    return NextResponse.json({ success: true, plan })
+  } catch (error: any) {
+    console.error('createPlan error:', error)
+    return NextResponse.json({ error: error.message || 'create_failed' }, { status: 500 })
+  }
 }
 
 async function updatePlan(body: any) {
-  const { planId, id, createdAt, updatedAt, ...data } = body
-  const plan = await db.miningPlan.update({ where: { id: planId }, data })
-  return NextResponse.json({ success: true, plan })
+  try {
+    const { planId, id, createdAt, updatedAt, ...data } = body
+
+    if (!planId) {
+      return NextResponse.json({ error: 'plan_id_required' }, { status: 400 })
+    }
+
+    // Only include fields that are provided and valid
+    const updateData: any = {}
+    if (data.name !== undefined) updateData.name = data.name
+    if (data.nameAr !== undefined) updateData.nameAr = data.nameAr
+    if (data.description !== undefined) updateData.description = data.description
+    if (data.descriptionAr !== undefined) updateData.descriptionAr = data.descriptionAr
+    if (data.price !== undefined) updateData.price = Number(data.price)
+    if (data.dailyProfitRate !== undefined) updateData.dailyProfitRate = Number(data.dailyProfitRate)
+    if (data.durationHours !== undefined) updateData.durationHours = Number(data.durationHours)
+    if (data.minInvestment !== undefined) updateData.minInvestment = Number(data.minInvestment)
+    if (data.maxInvestment !== undefined) updateData.maxInvestment = Number(data.maxInvestment)
+    if (data.color !== undefined) updateData.color = data.color
+    if (data.icon !== undefined) updateData.icon = data.icon
+    if (data.isActive !== undefined) updateData.isActive = data.isActive
+    if (data.sortOrder !== undefined) updateData.sortOrder = Number(data.sortOrder)
+
+    const plan = await db.miningPlan.update({ where: { id: planId }, data: updateData })
+    return NextResponse.json({ success: true, plan })
+  } catch (error: any) {
+    console.error('updatePlan error:', error)
+    return NextResponse.json({ error: error.message || 'update_failed' }, { status: 500 })
+  }
 }
 
 async function deletePlan(planId: string) {

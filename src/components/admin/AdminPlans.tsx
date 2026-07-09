@@ -52,9 +52,28 @@ export function AdminPlans() {
   }
 
   const handleSave = async (plan: any) => {
+    // Clean the plan data - remove fields that shouldn't be sent
     const { id, createdAt, updatedAt, ...cleanPlan } = plan
+
+    // Ensure required fields have valid values
+    const safePlan = {
+      name: cleanPlan.name || '',
+      nameAr: cleanPlan.nameAr || '',
+      description: cleanPlan.description || null,
+      descriptionAr: cleanPlan.descriptionAr || null,
+      price: Number(cleanPlan.price) || Number(cleanPlan.minInvestment) || 50,
+      dailyProfitRate: Number(cleanPlan.dailyProfitRate) || 0.02,
+      durationHours: Number(cleanPlan.durationHours) || 24,
+      minInvestment: Number(cleanPlan.minInvestment) || 50,
+      maxInvestment: Number(cleanPlan.maxInvestment) || 1000,
+      color: cleanPlan.color || '#3B82F6',
+      icon: cleanPlan.icon || 'pickaxe',
+      isActive: cleanPlan.isActive !== undefined ? cleanPlan.isActive : true,
+      sortOrder: Number(cleanPlan.sortOrder) || 0,
+    }
+
     const action = plan.id ? 'update_plan' : 'create_plan'
-    const payload = plan.id ? { planId: plan.id, ...cleanPlan } : cleanPlan
+    const payload = plan.id ? { planId: plan.id, ...safePlan } : safePlan
     await handleAction(action, payload)
     setShowModal(false)
     setEditing(null)
