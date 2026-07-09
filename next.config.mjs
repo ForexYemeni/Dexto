@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -8,6 +7,10 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   reactStrictMode: false,
+  // Disable sharp - it needs native bindings that fail on Vercel
+  images: {
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;
