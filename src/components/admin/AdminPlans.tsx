@@ -42,14 +42,19 @@ export function AdminPlans() {
       if (res.ok) {
         toast({ variant: 'success', title: '✅ ' + t('success') })
         fetchData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast({ variant: 'destructive', title: '❌ ' + t('error'), description: err.error || 'Failed' })
       }
-    } catch {}
+    } catch {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
   }
 
   const handleSave = async (plan: any) => {
+    const { id, createdAt, updatedAt, ...cleanPlan } = plan
     const action = plan.id ? 'update_plan' : 'create_plan'
-    const payload = plan.id ? { planId: plan.id, ...plan } : plan
-    delete payload.id
+    const payload = plan.id ? { planId: plan.id, ...cleanPlan } : cleanPlan
     await handleAction(action, payload)
     setShowModal(false)
     setEditing(null)

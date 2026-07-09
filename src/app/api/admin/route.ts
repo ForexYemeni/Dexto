@@ -424,12 +424,14 @@ async function adjustBalance(body: any) {
 }
 
 async function createPlan(body: any) {
-  const plan = await db.miningPlan.create({ data: body })
+  // Remove id, createdAt, updatedAt - they should not be set manually
+  const { id, createdAt, updatedAt, ...planData } = body
+  const plan = await db.miningPlan.create({ data: planData })
   return NextResponse.json({ success: true, plan })
 }
 
 async function updatePlan(body: any) {
-  const { planId, ...data } = body
+  const { planId, id, createdAt, updatedAt, ...data } = body
   const plan = await db.miningPlan.update({ where: { id: planId }, data })
   return NextResponse.json({ success: true, plan })
 }
@@ -595,14 +597,16 @@ async function closeTicket(ticketId: string) {
 
 async function updateSettings(body: any) {
   const { settings } = body
+  // Remove id and updatedAt - they should not be updated
+  const { id, updatedAt, ...updateData } = settings
   const existing = await db.systemSetting.findFirst()
   if (!existing) {
-    const created = await db.systemSetting.create({ data: settings })
+    const created = await db.systemSetting.create({ data: updateData })
     return NextResponse.json({ success: true, settings: created })
   }
   const updated = await db.systemSetting.update({
     where: { id: existing.id },
-    data: settings,
+    data: updateData,
   })
   return NextResponse.json({ success: true, settings: updated })
 }

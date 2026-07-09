@@ -20,6 +20,7 @@ export function AdminUsers() {
   const [adjustingBalance, setAdjustingBalance] = useState<any | null>(null)
   const [adjustAmount, setAdjustAmount] = useState(0)
   const [adjustReason, setAdjustReason] = useState('')
+  const [deletingUser, setDeletingUser] = useState<any | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -55,7 +56,7 @@ export function AdminUsers() {
         const msg = msgs[action]
         toast({
           variant: (msg?.variant as any) || 'success',
-          title: '✅ ' + (msg ? (locale === 'ar' ? msg.ar : msg.en) : t('success')),
+          title: (action === 'delete_user' ? '🗑️ ' : '✅ ') + (msg ? (locale === 'ar' ? msg.ar : msg.en) : t('success')),
         })
         fetchData()
       } else {
@@ -64,6 +65,12 @@ export function AdminUsers() {
     } catch {
       toast({ variant: 'destructive', title: '❌ ' + t('error') })
     }
+  }
+
+  const confirmDelete = async () => {
+    if (!deletingUser) return
+    await handleAction('delete_user', deletingUser.id)
+    setDeletingUser(null)
   }
 
   const handleAdjustBalance = async () => {
@@ -196,11 +203,7 @@ export function AdminUsers() {
                           </button>
                         )}
                         <button
-                          onClick={() => {
-                            if (confirm(locale === 'ar' ? 'هل أنت متأكد؟' : 'Are you sure?')) {
-                              handleAction('delete_user', u.id)
-                            }
-                          }}
+                          onClick={() => setDeletingUser(u)}
                           className="p-1.5 rounded-lg glass hover:bg-red-500/20 transition-colors"
                           title={t('deleteUser')}
                         >
@@ -275,6 +278,75 @@ export function AdminUsers() {
             </motion.div>
           </motion.div>
         )}
+
+        {/* Delete confirmation card */}
+        <AnimatePresence>
+          {deletingUser && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeletingUser(null)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="glass-strong rounded-3xl p-6 w-full max-w-md border border-red-500/30"
+              >
+                {/* Warning icon */}
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <Trash2 className="w-8 h-8 text-red-400" />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-bold text-white text-center mb-2">
+                  {locale === 'ar' ? 'تأكيد حذف المستخدم' : 'Confirm User Deletion'}
+                </h3>
+                <p className="text-xs text-white/50 text-center mb-4">
+                  {locale === 'ar'
+                    ? 'هذا الإجراء لا يمكن التراجع عنه. سيتم حذف المستخدم وجميع بياناته نهائياً.'
+                    : 'This action cannot be undone. The user and all their data will be permanently deleted.'}
+                </p>
+
+                {/* User info card */}
+                <div className="glass rounded-xl p-3 mb-5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold">
+                    {deletingUser.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{deletingUser.name}</p>
+                    <p className="text-[10px] text-white/40 truncate">{deletingUser.email}</p>
+                  </div>
+                  <div className="text-end">
+                    <p className="text-[10px] text-white/40">{t('balance')}</p>
+                    <p className="text-xs font-bold text-white">{formatCurrency(deletingUser.balance, locale)}</p>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setDeletingUser(null)}
+                    className="flex-1 py-3 rounded-xl glass text-white text-sm font-medium hover:bg-white/10 transition-colors"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-semibold hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {locale === 'ar' ? 'نعم، احذف' : 'Yes, Delete'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </AnimatePresence>
     </div>
   )
