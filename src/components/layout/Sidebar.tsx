@@ -109,7 +109,7 @@ export function Sidebar() {
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-amber-500 flex items-center justify-center glow-electric shrink-0">
-              <Bitcoin className="w-5 h-5 text-white" />
+              <img src="/icon-192.png" alt="Dexto" className="w-8 h-8 rounded-lg" />
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold text-white truncate">

@@ -1,0 +1,77 @@
+{
+  "name": "Dexto - Crypto Mining Investment Platform",
+  "short_name": "Dexto",
+  "description": "Premium Crypto Mining & Investment Platform - Professional USDT Mining with Daily Returns",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a1a",
+  "theme_color": "#3B82F6",
+  "dir": "rtl",
+  "lang": "ar",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon-16.png",
+      "sizes": "16x16",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Open your dashboard",
+      "url": "/?view=dashboard"
+    },
+    {
+      "name": "Mining",
+      "short_name": "Mining",
+      "description": "Start mining",
+      "url": "/?view=mining"
+    },
+    {
+      "name": "Deposit",
+      "short_name": "Deposit",
+      "description": "Deposit USDT",
+      "url": "/?view=deposit"
+    }
+  ]
+}

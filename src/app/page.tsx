@@ -27,6 +27,7 @@ import { AdminLogs } from '@/components/admin/AdminLogs'
 import { initSocket } from '@/lib/socket-client'
 import { Toaster as ShadcnToaster } from '@/components/ui/toaster'
 import { Toaster as SonnerToaster } from '@/components/ui/sonner'
+import { PWAInstallCard } from '@/components/PWAInstallCard'
 
 export default function Home() {
   const { isRTL, locale } = useI18n()
@@ -94,6 +95,7 @@ export default function Home() {
         <AuthPage />
         <ShadcnToaster />
         <SonnerToaster />
+        <PWAInstallCard />
       </>
     )
   }
@@ -152,6 +154,7 @@ export default function Home() {
       </div>
       <ShadcnToaster />
       <SonnerToaster />
+      <PWAInstallCard />
     </>
   )
 }

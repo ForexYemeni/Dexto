@@ -195,7 +195,7 @@ export default function AuthPage() {
               transition={{ type: 'spring', duration: 1 }}
               className="inline-flex items-center justify-center w-20 h-20 mb-4 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-amber-500 glow-electric"
             >
-              <Bitcoin className="w-10 h-10 text-white" />
+              <img src="/icon-192.png" alt="Dexto" className="w-12 h-12 rounded-2xl" />
             </motion.div>
             <h1 className="text-2xl font-bold text-white mb-1">
               {mode === 'login' && t('welcomeBack')}
