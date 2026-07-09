@@ -74,4 +74,4 @@ mini-services/*/*.log
 /download/
 
 # Bun lockfile backup
-*.lockb.bak
+*.lockb.baktool-results/

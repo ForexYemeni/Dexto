@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 
-// Ensure DATABASE_URL is set - fallback to .env file value
-// This handles cases where the shell environment has a stale value
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
-  // Try to load from .env file
+// Ensure DATABASE_URL is set
+// On Vercel, this comes from environment variables
+// On local dev, it comes from .env file
+if (!process.env.DATABASE_URL) {
   try {
     const fs = require('fs')
     const path = require('path')
@@ -20,21 +20,20 @@ if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
       }
     }
   } catch (e) {
-    // ignore
+    // ignore - will use process.env.DATABASE_URL from Vercel
   }
 }
 
+// PrismaClient is attached to `globalThis` to prevent exhausting database connections
+// during hot reloads in development, and to reuse the connection in serverless functions
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// Force new PrismaClient if the existing one was created with wrong provider
-function createPrismaClient() {
-  return new PrismaClient({
-    log: ['error', 'warn'],
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   })
-}
-
-export const db = globalForPrisma.prisma ?? createPrismaClient()
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

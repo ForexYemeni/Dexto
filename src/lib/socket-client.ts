@@ -10,25 +10,43 @@ export function getSocket(): Socket | null {
 }
 
 export function initSocket(userId?: string) {
+  // On Vercel production, Socket.io mini-service is not available
+  // The platform works fine without it (uses polling for data refresh instead)
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('preview')) {
+    console.log('[socket] Skipping socket connection in production (Vercel)')
+    return null
+  }
+
   if (!socket) {
-    socket = io('/?XTransformPort=3003', {
-      path: '/',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    })
+    try {
+      socket = io('/?XTransformPort=3003', {
+        path: '/',
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        timeout: 5000,
+      })
 
-    socket.on('connect', () => {
-      console.log('[socket] connected')
-      if (userId) {
-        socket?.emit('auth', { userId })
-      }
-    })
+      socket.on('connect', () => {
+        console.log('[socket] connected')
+        if (userId) {
+          socket?.emit('auth', { userId })
+        }
+      })
 
-    socket.on('disconnect', () => {
-      console.log('[socket] disconnected')
-    })
+      socket.on('connect_error', () => {
+        console.log('[socket] connection failed - continuing without realtime')
+        socket = null
+      })
+
+      socket.on('disconnect', () => {
+        console.log('[socket] disconnected')
+      })
+    } catch (e) {
+      console.log('[socket] init failed, continuing without realtime')
+      socket = null
+    }
   } else if (userId && socket.connected) {
     socket.emit('auth', { userId })
   }
