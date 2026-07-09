@@ -34,7 +34,7 @@ export function NotificationsView() {
         body: JSON.stringify({ action: 'mark_all_read' }),
       })
       markAllRead()
-      toast({ title: t('success') })
+      toast({ variant: 'success', title: '✅ ' + t('success') })
     } catch {}
   }
 

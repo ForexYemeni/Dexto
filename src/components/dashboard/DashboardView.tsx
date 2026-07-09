@@ -38,7 +38,10 @@ export function DashboardView() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/dashboard')
+      const res = await fetch('/api/dashboard', {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      })
       const json = await res.json()
       if (json.user) {
         updateUser({
@@ -57,7 +60,7 @@ export function DashboardView() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000) // refresh every 30s
+    const interval = setInterval(fetchData, 15000) // refresh every 15s for faster updates
     return () => clearInterval(interval)
   }, [])
 

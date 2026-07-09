@@ -47,10 +47,23 @@ export function AdminUsers() {
         body: JSON.stringify({ action, userId }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        const msgs: Record<string, { ar: string; en: string; variant: string }> = {
+          suspend_user: { ar: 'تم إيقاف المستخدم', en: 'User suspended', variant: 'warning' },
+          activate_user: { ar: 'تم تفعيل المستخدم', en: 'User activated', variant: 'success' },
+          delete_user: { ar: 'تم حذف المستخدم', en: 'User deleted', variant: 'destructive' },
+        }
+        const msg = msgs[action]
+        toast({
+          variant: (msg?.variant as any) || 'success',
+          title: '✅ ' + (msg ? (locale === 'ar' ? msg.ar : msg.en) : t('success')),
+        })
         fetchData()
+      } else {
+        toast({ variant: 'destructive', title: '❌ ' + t('error') })
       }
-    } catch {}
+    } catch {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
   }
 
   const handleAdjustBalance = async () => {
@@ -67,13 +80,21 @@ export function AdminUsers() {
         }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({
+          variant: 'success',
+          title: '✅ ' + (locale === 'ar' ? 'تم تحديث الرصيد بنجاح' : 'Balance updated successfully'),
+          description: `${adjustAmount > 0 ? '+' : ''}${adjustAmount} USDT`,
+        })
         setAdjustingBalance(null)
         setAdjustAmount(0)
         setAdjustReason('')
         fetchData()
+      } else {
+        toast({ variant: 'destructive', title: '❌ ' + t('error') })
       }
-    } catch {}
+    } catch {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
   }
 
   return (

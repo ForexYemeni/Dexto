@@ -53,7 +53,7 @@ export function ReferralsView() {
     try {
       await navigator.clipboard.writeText(data.referralLink)
       setCopied(true)
-      toast({ title: t('copied') })
+      toast({ variant: 'success', title: '✅ ' + t('copied') })
       setTimeout(() => setCopied(false), 2000)
     } catch {}
   }

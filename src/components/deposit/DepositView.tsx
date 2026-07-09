@@ -99,17 +99,21 @@ export function DepositView() {
       if (!res.ok) {
         toast({
           variant: 'destructive',
-          title: t('error'),
+          title: '❌ ' + t('error'),
           description: result.error === 'below_minimum' ? t('minDeposit') : t('error'),
         })
         return
       }
-      toast({ title: locale === 'ar' ? 'تم إرسال طلب الإيداع' : 'Deposit request submitted' })
+      toast({
+        variant: 'success',
+        title: '✅ ' + (locale === 'ar' ? 'تم إرسال طلب الإيداع' : 'Deposit request submitted'),
+        description: locale === 'ar' ? 'سيتم مراجعة طلبك من قبل الإدارة' : 'Your request will be reviewed by admin',
+      })
       setAmount(0)
       setTxHash('')
       fetchData()
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setSubmitting(false)
     }

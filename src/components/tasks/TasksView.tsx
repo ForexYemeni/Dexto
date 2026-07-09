@@ -51,15 +51,19 @@ export function TasksView() {
       if (!res.ok) {
         toast({
           variant: 'destructive',
-          title: t('error'),
+          title: '❌ ' + t('error'),
           description: result.error === 'already_claimed' ? t('rewardClaimed') : t('error'),
         })
         return
       }
-      toast({ title: t('rewardClaimed') })
+      toast({
+        variant: 'success',
+        title: '✅ ' + t('rewardClaimed'),
+        description: locale === 'ar' ? 'تم إضافة المكافأة إلى رصيدك' : 'Reward added to your balance',
+      })
       fetchData()
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setClaiming(null)
     }

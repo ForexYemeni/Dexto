@@ -61,7 +61,7 @@ export function MiningView() {
     if (investmentAmount < selectedPlan.minInvestment || investmentAmount > selectedPlan.maxInvestment) {
       toast({
         variant: 'destructive',
-        title: t('error'),
+        title: '❌ ' + t('error'),
         description: `${t('minInvestment')}: ${selectedPlan.minInvestment} USDT`,
       })
       return
@@ -88,19 +88,20 @@ export function MiningView() {
         }
         toast({
           variant: 'destructive',
-          title: t('error'),
+          title: '❌ ' + t('error'),
           description: errMap[data.error] || t('error'),
         })
         return
       }
       toast({
-        title: t('miningStarted'),
+        variant: 'success',
+        title: '✅ ' + t('miningStarted'),
         description: `${t('expectedProfit')}: ${formatCurrency(data.session.expectedProfit, locale)} USDT`,
       })
       setShowModal(false)
       fetchData()
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error'), description: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error'), description: t('error') })
     } finally {
       setStartingPlan(null)
     }

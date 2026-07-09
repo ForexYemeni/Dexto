@@ -46,7 +46,7 @@ export function SupportView() {
     if (!subject || !message) {
       toast({
         variant: 'destructive',
-        title: t('error'),
+        title: '❌ ' + t('error'),
         description: locale === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields',
       })
       return
@@ -60,16 +60,20 @@ export function SupportView() {
         body: JSON.stringify({ subject, message, priority }),
       })
       if (!res.ok) {
-        toast({ variant: 'destructive', title: t('error') })
+        toast({ variant: 'destructive', title: '❌ ' + t('error') })
         return
       }
-      toast({ title: t('ticketCreated') })
+      toast({
+        variant: 'success',
+        title: '✅ ' + t('ticketCreated'),
+        description: locale === 'ar' ? 'سيتم الرد على تذكرتك قريباً' : 'We will reply to your ticket soon',
+      })
       setSubject('')
       setMessage('')
       setPriority('normal')
       fetchData()
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setSubmitting(false)
     }

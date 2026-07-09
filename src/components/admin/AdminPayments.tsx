@@ -40,10 +40,24 @@ export function AdminPayments() {
         body: JSON.stringify({ action, [`${tab === 'deposits' ? 'depositId' : 'withdrawalId'}`]: id }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        const isApprove = action.includes('approve')
+        const isReject = action.includes('reject')
+        const msg = isApprove
+          ? (locale === 'ar' ? 'تمت الموافقة بنجاح' : 'Approved successfully')
+          : isReject
+          ? (locale === 'ar' ? 'تم الرفض' : 'Rejected')
+          : t('success')
+        toast({
+          variant: isApprove ? 'success' : isReject ? 'destructive' : 'default',
+          title: (isApprove ? '✅ ' : isReject ? '❌ ' : '') + msg,
+        })
         fetchData()
+      } else {
+        toast({ variant: 'destructive', title: '❌ ' + t('error') })
       }
-    } catch {}
+    } catch {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
   }
 
   return (
@@ -132,7 +146,7 @@ export function AdminPayments() {
                           <button
                             onClick={() => {
                               navigator.clipboard?.writeText(item.walletAddress)
-                              toast({ title: t('copied') })
+                              toast({ variant: 'success', title: '✅ ' + t('copied') })
                             }}
                             className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
                             title={t('copyAddress')}
@@ -151,7 +165,7 @@ export function AdminPayments() {
                             <button
                               onClick={() => {
                                 navigator.clipboard?.writeText(item.txHash)
-                                toast({ title: t('copied') })
+                                toast({ variant: 'success', title: '✅ ' + t('copied') })
                               }}
                               className="shrink-0 p-1 rounded glass hover:bg-white/10 transition-colors"
                               title={t('copyAddress')}

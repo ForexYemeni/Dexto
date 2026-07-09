@@ -25,7 +25,8 @@ import { AdminTickets } from '@/components/admin/AdminTickets'
 import { AdminSettings } from '@/components/admin/AdminSettings'
 import { AdminLogs } from '@/components/admin/AdminLogs'
 import { initSocket } from '@/lib/socket-client'
-import { Toaster } from '@/components/ui/sonner'
+import { Toaster as ShadcnToaster } from '@/components/ui/toaster'
+import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 
 export default function Home() {
   const { isRTL, locale } = useI18n()
@@ -91,7 +92,8 @@ export default function Home() {
     return (
       <>
         <AuthPage />
-        <Toaster />
+        <ShadcnToaster />
+        <SonnerToaster />
       </>
     )
   }
@@ -148,7 +150,8 @@ export default function Home() {
           </main>
         </div>
       </div>
-      <Toaster />
+      <ShadcnToaster />
+      <SonnerToaster />
     </>
   )
 }

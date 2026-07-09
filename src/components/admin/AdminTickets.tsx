@@ -39,7 +39,7 @@ export function AdminTickets() {
         body: JSON.stringify({ action: 'reply_ticket', ticketId: replying.id, reply }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         setReplying(null)
         setReply('')
         fetchData()
@@ -55,7 +55,7 @@ export function AdminTickets() {
         body: JSON.stringify({ action: 'close_ticket', ticketId }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         fetchData()
       }
     } catch {}

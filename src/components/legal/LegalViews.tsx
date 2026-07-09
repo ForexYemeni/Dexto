@@ -167,9 +167,9 @@ export function ProfileView() {
         name: form.name,
         language: form.language as any,
       })
-      toast({ title: t('settingsSaved') })
+      toast({ variant: 'success', title: '✅ ' + t('settingsSaved') })
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setLoading(false)
     }

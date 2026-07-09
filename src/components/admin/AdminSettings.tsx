@@ -38,10 +38,10 @@ export function AdminSettings() {
         body: JSON.stringify({ action: 'update_settings', settings }),
       })
       if (res.ok) {
-        toast({ title: t('settingsSaved') })
+        toast({ variant: 'success', title: '✅ ' + t('settingsSaved') })
       }
     } catch {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setSaving(false)
     }

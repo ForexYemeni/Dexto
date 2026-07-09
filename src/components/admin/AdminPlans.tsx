@@ -40,7 +40,7 @@ export function AdminPlans() {
         body: JSON.stringify({ action, ...payload }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         fetchData()
       }
     } catch {}

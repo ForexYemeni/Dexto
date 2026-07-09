@@ -92,17 +92,21 @@ export function WithdrawalView() {
         }
         toast({
           variant: 'destructive',
-          title: t('error'),
+          title: '❌ ' + t('error'),
           description: errMap[result.error] || t('error'),
         })
         return
       }
-      toast({ title: locale === 'ar' ? 'تم إرسال طلب السحب' : 'Withdrawal request submitted' })
+      toast({
+        variant: 'success',
+        title: '✅ ' + (locale === 'ar' ? 'تم إرسال طلب السحب' : 'Withdrawal request submitted'),
+        description: locale === 'ar' ? 'سيتم مراجعة طلبك ومعالجته قريباً' : 'Your request will be reviewed and processed soon',
+      })
       setAmount(0)
       setWalletAddress('')
       fetchData()
     } catch (e) {
-      toast({ variant: 'destructive', title: t('error') })
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setSubmitting(false)
     }

@@ -107,7 +107,7 @@ export default function AuthPage() {
 
         toast({
           variant: 'destructive',
-          title: t('error'),
+          title: '❌ ' + t('error'),
           description: msg,
         })
         setLoading(false)
@@ -117,7 +117,8 @@ export default function AuthPage() {
       if (data.user) {
         setUser(data.user)
         toast({
-          title: mode === 'login' ? t('loginSuccess') : t('registerSuccess'),
+          variant: 'success',
+          title: '✅ ' + (mode === 'login' ? t('loginSuccess') : t('registerSuccess')),
           description: `${t('welcomeBack')}, ${data.user.name}`,
         })
         if (data.user.language) {
@@ -129,13 +130,13 @@ export default function AuthPage() {
           setView('dashboard')
         }
       } else {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         setMode('login')
       }
     } catch (err) {
       toast({
         variant: 'destructive',
-        title: t('error'),
+        title: '❌ ' + t('error'),
         description: t('loginFailed'),
       })
     } finally {

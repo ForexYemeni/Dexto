@@ -40,7 +40,7 @@ export function AdminWallets() {
         body: JSON.stringify({ action, ...payload }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         setShowModal(false)
         setEditing(null)
         setForm({ network: '', networkAr: '', address: '', isActive: true })
@@ -57,7 +57,7 @@ export function AdminWallets() {
         body: JSON.stringify({ action, walletId }),
       })
       if (res.ok) {
-        toast({ title: t('success') })
+        toast({ variant: 'success', title: '✅ ' + t('success') })
         fetchData()
       }
     } catch {}
@@ -66,7 +66,7 @@ export function AdminWallets() {
   const handleCopy = async (address: string) => {
     try {
       await navigator.clipboard.writeText(address)
-      toast({ title: t('copied') })
+      toast({ variant: 'success', title: '✅ ' + t('copied') })
     } catch {}
   }
 
