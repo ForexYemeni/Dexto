@@ -64,6 +64,7 @@ export function AdminPlans() {
       price: Number(cleanPlan.price) || Number(cleanPlan.minInvestment) || 50,
       dailyProfitRate: Number(cleanPlan.dailyProfitRate) || 0.02,
       durationHours: Number(cleanPlan.durationHours) || 24,
+      totalDays: Number(cleanPlan.totalDays) || 7,
       minInvestment: Number(cleanPlan.minInvestment) || 50,
       maxInvestment: Number(cleanPlan.maxInvestment) || 1000,
       color: cleanPlan.color || '#3B82F6',
@@ -122,7 +123,7 @@ export function AdminPlans() {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">{locale === 'ar' ? plan.nameAr : plan.name}</h3>
-                      <p className="text-[10px] text-white/40">{(plan.dailyProfitRate * 100).toFixed(0)}% / {plan.durationHours}h</p>
+                      <p className="text-[10px] text-white/40">{(plan.dailyProfitRate * 100).toFixed(0)}% / {plan.totalDays || 7} {locale === 'ar' ? 'أيام' : 'days'}</p>
                     </div>
                   </div>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${plan.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -191,7 +192,7 @@ function PlanModal({ plan, onClose, onSave }: { plan: any | null; onClose: () =>
   const { t, locale } = useI18n()
   const [form, setForm] = useState<any>(plan || {
     name: '', nameAr: '', description: '', descriptionAr: '',
-    price: 50, dailyProfitRate: 0.02, durationHours: 24,
+    price: 50, dailyProfitRate: 0.02, durationHours: 24, totalDays: 7,
     minInvestment: 50, maxInvestment: 1000,
     color: '#3B82F6', icon: 'pickaxe', isActive: true, sortOrder: 1,
   })
@@ -222,7 +223,8 @@ function PlanModal({ plan, onClose, onSave }: { plan: any | null; onClose: () =>
           <Field label={locale === 'ar' ? 'الاسم (إنجليزي)' : 'Name (English)'} value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           <Field label={locale === 'ar' ? 'الاسم (عربي)' : 'Name (Arabic)'} value={form.nameAr} onChange={(v) => setForm({ ...form, nameAr: v })} />
           <Field label={`${t('dailyProfitRate')} (%)`} type="number" value={(form.dailyProfitRate * 100).toString()} onChange={(v) => setForm({ ...form, dailyProfitRate: Number(v) / 100 })} />
-          <Field label={`${t('duration')} (${t('hours')})`} type="number" value={form.durationHours.toString()} onChange={(v) => setForm({ ...form, durationHours: Number(v) })} />
+          <Field label={`${t('duration')} (${t('hours')})`} type="number" value={(form.durationHours || 24).toString()} onChange={(v) => setForm({ ...form, durationHours: Number(v) })} />
+          <Field label={locale === 'ar' ? 'مدة الخطة (أيام)' : 'Plan Duration (days)'} type="number" value={(form.totalDays || 7).toString()} onChange={(v) => setForm({ ...form, totalDays: Number(v) })} />
           <Field label={t('minInvestment')} type="number" value={form.minInvestment.toString()} onChange={(v) => setForm({ ...form, minInvestment: Number(v) })} />
           <Field label={t('maxInvestment')} type="number" value={form.maxInvestment.toString()} onChange={(v) => setForm({ ...form, maxInvestment: Number(v) })} />
           <Field label={t('primaryColor')} type="color" value={form.color} onChange={(v) => setForm({ ...form, color: v })} />

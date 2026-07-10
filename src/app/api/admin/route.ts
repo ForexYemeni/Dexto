@@ -228,6 +228,7 @@ async function getPlans() {
       price: p.price,
       dailyProfitRate: p.dailyProfitRate,
       durationHours: p.durationHours,
+      totalDays: p.totalDays || 7,
       minInvestment: p.minInvestment,
       maxInvestment: p.maxInvestment,
       color: p.color,
@@ -437,6 +438,7 @@ async function createPlan(body: any) {
       price: Number(planData.price) || Number(planData.minInvestment) || 50,
       dailyProfitRate: Number(planData.dailyProfitRate) || 0.02,
       durationHours: Number(planData.durationHours) || 24,
+      totalDays: Number(planData.totalDays) || 7,
       minInvestment: Number(planData.minInvestment) || 50,
       maxInvestment: Number(planData.maxInvestment) || 1000,
       color: planData.color || '#3B82F6',
@@ -470,6 +472,7 @@ async function updatePlan(body: any) {
     if (data.price !== undefined) updateData.price = Number(data.price)
     if (data.dailyProfitRate !== undefined) updateData.dailyProfitRate = Number(data.dailyProfitRate)
     if (data.durationHours !== undefined) updateData.durationHours = Number(data.durationHours)
+    if (data.totalDays !== undefined) updateData.totalDays = Number(data.totalDays)
     if (data.minInvestment !== undefined) updateData.minInvestment = Number(data.minInvestment)
     if (data.maxInvestment !== undefined) updateData.maxInvestment = Number(data.maxInvestment)
     if (data.color !== undefined) updateData.color = data.color

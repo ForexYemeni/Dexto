@@ -59,6 +59,7 @@ model MiningPlan {
   price           Float    // minimum investment in USDT
   dailyProfitRate Float    // e.g., 0.02 = 2%
   durationHours   Int      @default(24)
+  totalDays       Int      @default(7)
   minInvestment   Float    @default(50)
   maxInvestment   Float    @default(10000)
   color           String   @default("#3B82F6")
@@ -80,8 +81,12 @@ model UserMiningSession {
   planId          String
   investmentAmount Float
   expectedProfit  Float
+  dailyProfit     Float    @default(0)
+  totalDays       Int      @default(7)
+  currentDay      Int      @default(0)
   startedAt       DateTime
   endsAt          DateTime
+  planEndsAt      DateTime?
   status          String   @default("active") // active | completed | cancelled
   completedAt     DateTime?
   createdAt       DateTime @default(now())
