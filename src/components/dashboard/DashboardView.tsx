@@ -403,17 +403,22 @@ function ActiveMiningCard({ session }: { session: any }) {
   const minutes = Math.floor((remaining % 3600000) / 60000)
   const seconds = Math.floor((remaining % 60000) / 1000)
 
+  // Multi-day info
+  const totalDays = session.totalDays || 1
+  const currentDay = session.currentDay || 0
+  const dailyProfit = session.dailyProfit || session.expectedProfit
+
   return (
     <div className="glass rounded-xl p-3 border border-blue-500/20">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-white">{locale === 'ar' ? session.planNameAr : session.planName}</span>
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-          {locale === 'ar' ? 'نشط' : 'Active'}
+          {locale === 'ar' ? `يوم ${currentDay + 1}/${totalDays}` : `Day ${currentDay + 1}/${totalDays}`}
         </span>
       </div>
-      <p className="text-xs text-white/40 mb-2">
-        {formatCurrency(session.expectedProfit, locale)} USDT
+      <p className="text-xs text-green-400 mb-2">
+        +{formatCurrency(dailyProfit, locale)} USDT/{locale === 'ar' ? 'يوم' : 'day'}
       </p>
       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mb-2">
         <div className="h-full mining-progress transition-all" style={{ width: `${progress}%` }} />

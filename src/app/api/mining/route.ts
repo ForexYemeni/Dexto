@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       color: p.color,
       icon: p.icon,
       isActive: p.isActive,
+      totalDays: p.totalDays || 7,
     })),
     activeSessions: activeSessions.map((s) => ({
       id: s.id,
@@ -56,8 +57,12 @@ export async function GET(req: NextRequest) {
       planColor: s.plan.color,
       investmentAmount: s.investmentAmount,
       expectedProfit: s.expectedProfit,
+      dailyProfit: s.dailyProfit || s.expectedProfit,
+      totalDays: s.totalDays || 1,
+      currentDay: s.currentDay || 0,
       startedAt: s.startedAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
+      planEndsAt: s.planEndsAt?.toISOString() || null,
       status: s.status,
     })),
     history: history.map((h) => ({
@@ -119,14 +124,16 @@ async function startMining(userId: string, planId: string, investmentAmount: num
     return NextResponse.json({ error: 'already_active_for_plan' }, { status: 400 })
   }
 
-  // Calculate expected profit
-  const expectedProfit = investmentAmount * plan.dailyProfitRate
+  // Calculate daily profit (per 24h cycle)
+  const dailyProfit = investmentAmount * plan.dailyProfitRate
+  const totalDays = plan.totalDays || 7
 
-  // Start time = now (server time, Asia/Riyadh conceptually)
+  // Start time = now
   const startedAt = new Date()
   const endsAt = new Date(startedAt.getTime() + plan.durationHours * 60 * 60 * 1000)
+  const planEndsAt = new Date(startedAt.getTime() + totalDays * 24 * 60 * 60 * 1000)
 
-  // Deduct investment from balance
+  // Deduct investment (capital) from balance - CAPITAL IS LOCKED
   await db.user.update({
     where: { id: userId },
     data: {
@@ -135,20 +142,24 @@ async function startMining(userId: string, planId: string, investmentAmount: num
     },
   })
 
-  // Create mining session
+  // Create mining session with multi-day support
   const session = await db.userMiningSession.create({
     data: {
       userId,
       planId,
       investmentAmount,
-      expectedProfit,
+      expectedProfit: dailyProfit,  // daily profit per cycle
+      dailyProfit,
+      totalDays,
+      currentDay: 0,  // day 0 = first day in progress
       startedAt,
       endsAt,
+      planEndsAt,
       status: 'active',
     },
   })
 
-  // Record transaction
+  // Record transaction - capital locked
   await db.transaction.create({
     data: {
       userId,

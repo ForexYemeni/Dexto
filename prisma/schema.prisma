@@ -59,7 +59,8 @@ model MiningPlan {
   descriptionAr   String?
   price           Float    // minimum investment in USDT
   dailyProfitRate Float    // e.g., 0.02 = 2%
-  durationHours   Int      @default(24)
+  durationHours   Int      @default(24)  // hours per cycle (24h)
+  totalDays       Int      @default(7)   // total days the plan runs (capital locked)
   minInvestment   Float    @default(50)
   maxInvestment   Float    @default(10000)
   color           String   @default("#3B82F6")
@@ -79,10 +80,14 @@ model UserMiningSession {
   id              String   @id @default(cuid()) @map("_id")
   userId          String
   planId          String
-  investmentAmount Float
-  expectedProfit  Float
+  investmentAmount Float    // locked capital
+  expectedProfit  Float    // daily profit (per 24h cycle)
+  dailyProfit     Float    // profit per day
+  totalDays       Int      @default(7)   // total days for this session
+  currentDay      Int      @default(0)   // current day completed (0 = first day in progress)
   startedAt       DateTime
-  endsAt          DateTime
+  endsAt          DateTime  // end of current 24h cycle
+  planEndsAt      DateTime? // end of entire plan (when capital is returned)
   status          String   @default("active") // active | completed | cancelled
   completedAt     DateTime?
   createdAt       DateTime @default(now())

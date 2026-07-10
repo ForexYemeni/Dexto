@@ -207,9 +207,9 @@ export function MiningView() {
                       </p>
                     </div>
                     <div className="glass rounded-xl p-3">
-                      <p className="text-[10px] text-white/40 mb-1">{t('duration')}</p>
+                      <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'المدة' : 'Duration'}</p>
                       <p className="text-lg font-bold text-white">
-                        {plan.durationHours} {t('hours')}
+                        {plan.totalDays || 7} {locale === 'ar' ? 'أيام' : 'days'}
                       </p>
                     </div>
                     <div className="glass rounded-xl p-3">
@@ -358,22 +358,33 @@ export function MiningView() {
                   </div>
                 </div>
 
-                {/* Expected profit */}
+                {/* Expected profit - daily + total */}
                 <div className="glass rounded-xl p-4 bg-gradient-to-br from-green-500/10 to-green-600/5">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-white/60 flex items-center gap-1">
                       <TrendingUp className="w-3.5 h-3.5 text-green-400" />
-                      {t('expectedProfit')}
+                      {locale === 'ar' ? 'الربح اليومي' : 'Daily Profit'}
                     </span>
                     <span className="text-lg font-bold text-green-400 tabular-nums">
                       +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate, locale)} USDT
                     </span>
                   </div>
-                  <p className="text-[10px] text-white/40">
-                    {locale === 'ar'
-                      ? `بعد ${selectedPlan.durationHours} ساعة`
-                      : `After ${selectedPlan.durationHours} hours`}
-                  </p>
+                  <div className="flex items-center justify-between mb-2 pt-2 border-t border-white/10">
+                    <span className="text-xs text-white/60">
+                      {locale === 'ar' ? `إجمالي الأرباح (${selectedPlan.totalDays || 7} أيام)` : `Total Profit (${selectedPlan.totalDays || 7} days)`}
+                    </span>
+                    <span className="text-lg font-bold text-purple-400 tabular-nums">
+                      +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate * (selectedPlan.totalDays || 7), locale)} USDT
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <p className="text-[10px] text-white/50">
+                      {locale === 'ar'
+                        ? `رأس المال مقفل لمدة ${selectedPlan.totalDays || 7} أيام - تسحب الأرباح يومياً`
+                        : `Capital locked for ${selectedPlan.totalDays || 7} days - withdraw profits daily`}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Action buttons */}
@@ -428,6 +439,16 @@ function ActiveMiningCard({ session }: { session: any }) {
   const minutes = Math.floor((remaining % 3600000) / 60000)
   const seconds = Math.floor((remaining % 60000) / 1000)
 
+  // Multi-day plan info
+  const totalDays = session.totalDays || 1
+  const currentDay = session.currentDay || 0
+  const dailyProfit = session.dailyProfit || session.expectedProfit
+  const totalProfit = dailyProfit * totalDays
+  const earnedProfit = dailyProfit * currentDay
+  const planEndsAt = session.planEndsAt ? new Date(session.planEndsAt).getTime() : null
+  const planRemaining = planEndsAt ? Math.max(0, planEndsAt - now) : 0
+  const planDaysLeft = Math.ceil(planRemaining / (24 * 60 * 60 * 1000))
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -464,18 +485,49 @@ function ActiveMiningCard({ session }: { session: any }) {
           </span>
         </div>
 
-        {/* Countdown */}
+        {/* Days Progress - NEW */}
+        <div className="glass rounded-xl p-3 mb-4 bg-gradient-to-r from-blue-500/10 to-purple-500/5 border border-blue-500/20">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-white/60 font-medium">
+              {locale === 'ar' ? 'تقدم الخطة' : 'Plan Progress'}
+            </span>
+            <span className="text-xs font-bold text-white">
+              {locale === 'ar' ? `اليوم ${currentDay + 1} من ${totalDays}` : `Day ${currentDay + 1} of ${totalDays}`}
+            </span>
+          </div>
+          {/* Days dots */}
+          <div className="flex gap-1 mb-2">
+            {Array.from({ length: totalDays }).map((_, i) => (
+              <div
+                key={i}
+                className={`flex-1 h-1.5 rounded-full transition-all ${
+                  i < currentDay ? 'bg-green-500' : i === currentDay ? 'bg-blue-500 animate-pulse' : 'bg-white/10'
+                }`}
+              />
+            ))}
+          </div>
+          <div className="flex justify-between text-[10px] text-white/40">
+            <span>{locale === 'ar' ? `${planDaysLeft} يوم متبقي` : `${planDaysLeft} days left`}</span>
+            <span className="text-green-400 font-medium">
+              {locale === 'ar' ? `ربحت: ${formatCurrency(earnedProfit, locale)} USDT` : `Earned: ${formatCurrency(earnedProfit, locale)} USDT`}
+            </span>
+          </div>
+        </div>
+
+        {/* Countdown - current 24h cycle */}
         <div className="text-center mb-4">
-          <p className="text-[10px] text-white/40 mb-1">{t('timeRemaining')}</p>
+          <p className="text-[10px] text-white/40 mb-1">
+            {locale === 'ar' ? 'الوقت المتبقي لليوم' : 'Time Remaining Today'}
+          </p>
           <p className="text-3xl font-bold gradient-text-electric tabular-nums">
             {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
           </p>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress bar - current cycle */}
         <div className="mb-4">
           <div className="flex justify-between text-[10px] text-white/40 mb-1.5">
-            <span>{t('progress')}</span>
+            <span>{locale === 'ar' ? 'تقدم اليوم' : 'Today Progress'}</span>
             <span>{progress.toFixed(1)}%</span>
           </div>
           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -486,39 +538,37 @@ function ActiveMiningCard({ session }: { session: any }) {
           </div>
         </div>
 
-        {/* Times */}
-        <div className="grid grid-cols-2 gap-2 mb-4 text-[10px]">
-          <div className="glass rounded-lg p-2">
-            <p className="text-white/40">{t('startTime')}</p>
-            <p className="text-white">{formatMeccaTime(session.startedAt, locale)}</p>
+        {/* Daily profit + Total profit */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="glass rounded-xl p-3 bg-gradient-to-r from-green-500/10 to-transparent">
+            <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'الربح اليومي' : 'Daily Profit'}</p>
+            <p className="text-sm font-bold text-green-400">
+              +{formatCurrency(dailyProfit, locale)} USDT
+            </p>
           </div>
-          <div className="glass rounded-lg p-2">
-            <p className="text-white/40">{t('endTime')}</p>
-            <p className="text-white">{formatMeccaTime(session.endsAt, locale)}</p>
-          </div>
-        </div>
-
-        {/* Expected profit */}
-        <div className="glass rounded-xl p-3 bg-gradient-to-r from-green-500/10 to-transparent mb-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white/60 flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5 text-green-400" />
-              {t('expectedProfit')}
-            </span>
-            <span className="text-sm font-bold text-green-400">
-              +{formatCurrency(session.expectedProfit, locale)} USDT
-            </span>
+          <div className="glass rounded-xl p-3 bg-gradient-to-r from-purple-500/10 to-transparent">
+            <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'إجمالي الأرباح' : 'Total Profit'}</p>
+            <p className="text-sm font-bold text-purple-400">
+              +{formatCurrency(totalProfit, locale)} USDT
+            </p>
           </div>
         </div>
 
-        {/* Capital locked notice */}
+        {/* Capital locked notice - UPDATED */}
         <div className="glass rounded-xl p-3 bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
           <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-white/60 leading-relaxed">
-            {locale === 'ar'
-              ? `رأس المال (${formatCurrency(session.investmentAmount, locale)} USDT) مقفل حتى انتهاء التعدين. سيتم إرجاعه مع الأرباح تلقائياً عند الاكتمال.`
-              : `Capital (${formatCurrency(session.investmentAmount, locale)} USDT) is locked until mining ends. It will be returned with profits automatically upon completion.`}
-          </p>
+          <div>
+            <p className="text-[10px] text-white/60 leading-relaxed">
+              {locale === 'ar'
+                ? `رأس المال (${formatCurrency(session.investmentAmount, locale)} USDT) مقفل حتى انتهاء الخطة (${totalDays} أيام). سيتم إرجاعه تلقائياً عند اكتمال جميع الأيام.`
+                : `Capital (${formatCurrency(session.investmentAmount, locale)} USDT) is locked until plan ends (${totalDays} days). It will be returned automatically when all days complete.`}
+            </p>
+            <p className="text-[10px] text-green-400 mt-1">
+              {locale === 'ar'
+                ? '✓ يمكنك سحب الأرباح اليومية من صفحة السحب'
+                : '✓ You can withdraw daily profits from the Withdraw page'}
+            </p>
+          </div>
         </div>
       </div>
     </motion.div>

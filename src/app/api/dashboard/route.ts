@@ -110,10 +110,15 @@ export async function GET(req: NextRequest) {
       planId: s.planId,
       planName: s.plan.name,
       planNameAr: s.plan.nameAr,
+      planColor: s.plan.color,
       investmentAmount: s.investmentAmount,
       expectedProfit: s.expectedProfit,
+      dailyProfit: s.dailyProfit || s.expectedProfit,
+      totalDays: s.totalDays || 1,
+      currentDay: s.currentDay || 0,
       startedAt: s.startedAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
+      planEndsAt: s.planEndsAt?.toISOString() || null,
       status: s.status,
     })),
     recentTransactions: recentTransactions.map((t) => ({
@@ -144,10 +149,14 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// Process completed mining sessions - add profits to user balance
+// Process completed mining sessions
+// NEW LOGIC: Multi-day mining
+// - Each 24h cycle: add daily profit to balance (withdrawable)
+// - Capital stays LOCKED until all days are complete
+// - After last day: return capital + last profit, mark as completed
 export async function processCompletedMining(userId: string) {
   const now = new Date()
-  const completedSessions = await db.userMiningSession.findMany({
+  const completedCycles = await db.userMiningSession.findMany({
     where: {
       userId,
       status: 'active',
@@ -156,82 +165,138 @@ export async function processCompletedMining(userId: string) {
     include: { plan: true },
   })
 
-  for (const session of completedSessions) {
-    // Use transaction to ensure atomicity
+  for (const session of completedCycles) {
     await db.$transaction(async (tx) => {
-      // Update session status
-      await tx.userMiningSession.update({
-        where: { id: session.id },
-        data: {
-          status: 'completed',
-          completedAt: now,
-        },
-      })
-
-      // Return capital + add profit to user balance
-      const profit = session.expectedProfit
+      const profit = session.dailyProfit || session.expectedProfit
       const capital = session.investmentAmount
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          balance: { increment: capital + profit },
-          totalProfit: { increment: profit },
-          todayProfit: { increment: profit },
-          monthProfit: { increment: profit },
-        },
-      })
+      const totalDays = session.totalDays || 1
+      const nextDay = session.currentDay + 1
 
-      // Record capital return transaction
-      await tx.transaction.create({
-        data: {
-          userId,
-          type: 'mining_profit',
-          amount: capital,
-          status: 'completed',
-          description: `Capital returned - ${session.plan.name}`,
-          reference: session.id,
-        },
-      })
+      // Check if this is the LAST day
+      if (nextDay >= totalDays) {
+        // ===== PLAN COMPLETE - Return capital + last profit =====
+        await tx.userMiningSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'completed',
+            currentDay: totalDays,
+            completedAt: now,
+          },
+        })
 
-      // Record profit transaction
-      await tx.transaction.create({
-        data: {
-          userId,
-          type: 'mining_profit',
-          amount: profit,
-          status: 'completed',
-          description: `Mining profit - ${session.plan.name}`,
-          reference: session.id,
-        },
-      })
+        // Return capital + last daily profit to balance
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            balance: { increment: capital + profit },
+            totalProfit: { increment: profit },
+            todayProfit: { increment: profit },
+            monthProfit: { increment: profit },
+          },
+        })
 
-      // Add to mining history
-      await tx.miningHistory.create({
-        data: {
-          userId,
-          planId: session.planId,
-          planName: session.plan.name,
-          investmentAmount: session.investmentAmount,
-          profitAmount: profit,
-          startedAt: session.startedAt,
-          completedAt: now,
-        },
-      })
+        // Record capital return
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: 'mining_profit',
+            amount: capital,
+            status: 'completed',
+            description: `Capital returned - ${session.plan.name} (Plan Complete)`,
+            reference: session.id,
+          },
+        })
 
-      // Create notification
-      await tx.notification.create({
-        data: {
-          userId,
-          type: 'mining',
-          title: 'Mining Completed!',
-          titleAr: 'اكتمل التعدين!',
-          message: `Your mining session for ${session.plan.name} has completed. Capital returned (${capital.toFixed(2)} USDT) + profit (${profit.toFixed(2)} USDT).`,
-          messageAr: `اكتملت جلسة التعدين لخطة ${session.plan.nameAr}. تم إرجاع رأس المال (${capital.toFixed(2)} USDT) + الأرباح (${profit.toFixed(2)} USDT).`,
-        },
-      })
+        // Record last daily profit
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: 'mining_profit',
+            amount: profit,
+            status: 'completed',
+            description: `Daily profit Day ${totalDays}/${totalDays} - ${session.plan.name}`,
+            reference: session.id,
+          },
+        })
 
-      // Process referral commissions
-      await processReferralCommission(userId, profit, session.id, tx)
+        // Add to mining history
+        await tx.miningHistory.create({
+          data: {
+            userId,
+            planId: session.planId,
+            planName: session.plan.name,
+            investmentAmount: capital,
+            profitAmount: profit * totalDays, // total profit over all days
+            startedAt: session.startedAt,
+            completedAt: now,
+          },
+        })
+
+        // Notification - Plan complete
+        await tx.notification.create({
+          data: {
+            userId,
+            type: 'mining',
+            title: 'Plan Completed!',
+            titleAr: 'اكتملت الخطة!',
+            message: `Your ${session.plan.name} has completed all ${totalDays} days. Capital (${capital.toFixed(2)} USDT) + last profit (${profit.toFixed(2)} USDT) added to your balance.`,
+            messageAr: `اكتملت خطة ${session.plan.nameAr} لجميع أيام ${totalDays}. تم إرجاع رأس المال (${capital.toFixed(2)} USDT) + آخر ربح (${profit.toFixed(2)} USDT) إلى رصيدك.`,
+          },
+        })
+
+        // Process referral commissions on profit
+        await processReferralCommission(userId, profit, session.id, tx)
+      } else {
+        // ===== DAILY CYCLE - Add profit only, capital stays LOCKED =====
+        const newEndsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+
+        await tx.userMiningSession.update({
+          where: { id: session.id },
+          data: {
+            currentDay: nextDay,
+            endsAt: newEndsAt,  // extend to next 24h cycle
+            // status stays 'active', capital stays locked
+          },
+        })
+
+        // Add ONLY daily profit to balance (capital is still locked)
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            balance: { increment: profit },
+            totalProfit: { increment: profit },
+            todayProfit: { increment: profit },
+            monthProfit: { increment: profit },
+          },
+        })
+
+        // Record daily profit transaction
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: 'mining_profit',
+            amount: profit,
+            status: 'completed',
+            description: `Daily profit Day ${nextDay}/${totalDays} - ${session.plan.name}`,
+            reference: session.id,
+          },
+        })
+
+        // Notification - Daily profit
+        await tx.notification.create({
+          data: {
+            userId,
+            type: 'mining',
+            title: `Daily Profit - Day ${nextDay}/${totalDays}`,
+            titleAr: `ربح يومي - اليوم ${nextDay}/${totalDays}`,
+            message: `You earned ${profit.toFixed(2)} USDT from ${session.plan.name}. Capital remains locked until day ${totalDays}.`,
+            messageAr: `ربحت ${profit.toFixed(2)} USDT من خطة ${session.plan.nameAr}. رأس المال مقفل حتى اليوم ${totalDays}.`,
+          },
+        })
+
+        // Process referral commissions on daily profit
+        await processReferralCommission(userId, profit, session.id, tx)
+      }
     })
   }
 }
