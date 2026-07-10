@@ -33,12 +33,20 @@ export function MiningView() {
     try {
       const res = await fetch('/api/mining')
       const json = await res.json()
+      if (!res.ok) {
+        console.error('Mining API error:', json)
+        // Set fallback data so UI doesn't stay empty
+        setData({ plans: [], activeSessions: [], history: [], balance: user?.balance ?? 0 })
+        return
+      }
       setData(json)
       if (json.balance !== undefined && user) {
         useAuthStore.getState().updateUser({ balance: json.balance })
       }
     } catch (e) {
       console.error(e)
+      // Set fallback data
+      setData({ plans: [], activeSessions: [], history: [], balance: user?.balance ?? 0 })
     } finally {
       setLoading(false)
     }

@@ -5,13 +5,18 @@ import { processCompletedMining } from '../dashboard/route'
 
 // GET /api/mining - get plans + active sessions + history
 export async function GET(req: NextRequest) {
-  const payload = await getCurrentUser()
-  if (!payload) {
-    return NextResponse.json({ error: 'not_authenticated' }, { status: 401 })
-  }
+  try {
+    const payload = await getCurrentUser()
+    if (!payload) {
+      return NextResponse.json({ error: 'not_authenticated' }, { status: 401 })
+    }
 
   // Process any completed sessions first
-  await processCompletedMining(payload.userId)
+  try {
+    await processCompletedMining(payload.userId)
+  } catch (e) {
+    console.error('processCompletedMining error (non-fatal):', e)
+  }
 
   const plans = await db.miningPlan.findMany({
     where: { isActive: true },
@@ -75,6 +80,10 @@ export async function GET(req: NextRequest) {
     })),
     balance: user?.balance ?? 0,
   })
+  } catch (error: any) {
+    console.error('Mining API error:', error)
+    return NextResponse.json({ error: 'server_error', details: error.message }, { status: 500 })
+  }
 }
 
 // POST /api/mining - start mining

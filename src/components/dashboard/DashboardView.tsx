@@ -43,6 +43,33 @@ export function DashboardView() {
         headers: { 'Cache-Control': 'no-cache' },
       })
       const json = await res.json()
+      if (!res.ok) {
+        console.error('Dashboard API error:', json)
+        // Set fallback data so UI doesn't stay empty
+        setData({
+          user: {
+            id: user?.id || '',
+            email: user?.email || '',
+            name: user?.name || '',
+            role: user?.role || 'user',
+            balance: user?.balance ?? 0,
+            totalInvested: 0,
+            totalProfit: 0,
+            todayProfit: 0,
+            monthProfit: 0,
+            referralProfit: 0,
+            referralCode: user?.referralCode || '',
+          },
+          activeSessions: [],
+          recentTransactions: [],
+          miningHistory: [],
+          activityLogs: [],
+          referralCount: 0,
+          activeReferrals: 0,
+          chartData: [],
+        })
+        return
+      }
       if (json.user) {
         updateUser({
           balance: json.user.balance,
@@ -53,6 +80,29 @@ export function DashboardView() {
       setData(json)
     } catch (e) {
       console.error(e)
+      // Set fallback data
+      setData({
+        user: {
+          id: user?.id || '',
+          email: user?.email || '',
+          name: user?.name || '',
+          role: user?.role || 'user',
+          balance: user?.balance ?? 0,
+          totalInvested: 0,
+          totalProfit: 0,
+          todayProfit: 0,
+          monthProfit: 0,
+          referralProfit: 0,
+          referralCode: user?.referralCode || '',
+        },
+        activeSessions: [],
+        recentTransactions: [],
+        miningHistory: [],
+        activityLogs: [],
+        referralCount: 0,
+        activeReferrals: 0,
+        chartData: [],
+      })
     } finally {
       setLoading(false)
     }

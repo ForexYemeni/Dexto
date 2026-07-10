@@ -4,15 +4,16 @@ import { getCurrentUser } from '@/lib/auth'
 
 // GET /api/dashboard - user dashboard data
 export async function GET(req: NextRequest) {
-  const payload = await getCurrentUser()
-  if (!payload) {
-    return NextResponse.json({ error: 'not_authenticated' }, { status: 401 })
-  }
+  try {
+    const payload = await getCurrentUser()
+    if (!payload) {
+      return NextResponse.json({ error: 'not_authenticated' }, { status: 401 })
+    }
 
-  const user = await db.user.findUnique({ where: { id: payload.userId } })
-  if (!user) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 })
-  }
+    const user = await db.user.findUnique({ where: { id: payload.userId } })
+    if (!user) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    }
 
   // Active mining sessions
   const activeSessions = await db.userMiningSession.findMany({
@@ -56,7 +57,12 @@ export async function GET(req: NextRequest) {
   })
 
   // Process mining completion (check if any session ended)
-  await processCompletedMining(user.id)
+  // Wrapped in try-catch to prevent API failure for old sessions
+  try {
+    await processCompletedMining(user.id)
+  } catch (e) {
+    console.error('processCompletedMining error (non-fatal):', e)
+  }
 
   // Profit chart data (last 7 days)
   const sevenDaysAgo = new Date()
@@ -147,6 +153,10 @@ export async function GET(req: NextRequest) {
     activeReferrals,
     chartData,
   })
+  } catch (error: any) {
+    console.error('Dashboard API error:', error)
+    return NextResponse.json({ error: 'server_error', details: error.message }, { status: 500 })
+  }
 }
 
 // Process completed mining sessions
@@ -167,10 +177,11 @@ export async function processCompletedMining(userId: string) {
 
   for (const session of completedCycles) {
     await db.$transaction(async (tx) => {
-      const profit = session.dailyProfit || session.expectedProfit
-      const capital = session.investmentAmount
-      const totalDays = session.totalDays || 1
-      const nextDay = session.currentDay + 1
+      const profit = session.dailyProfit || session.expectedProfit || 0
+      const capital = session.investmentAmount || 0
+      const totalDays = session.totalDays || session.plan?.totalDays || 1
+      const currentDay = session.currentDay ?? 0
+      const nextDay = currentDay + 1
 
       // Check if this is the LAST day
       if (nextDay >= totalDays) {
