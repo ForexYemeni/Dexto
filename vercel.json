@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/cron/mining?secret=dexto-cron-secret-2026",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
