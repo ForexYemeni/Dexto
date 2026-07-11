@@ -24,6 +24,7 @@ import { AdminWallets } from '@/components/admin/AdminWallets'
 import { AdminTickets } from '@/components/admin/AdminTickets'
 import { AdminSettings } from '@/components/admin/AdminSettings'
 import { AdminLogs } from '@/components/admin/AdminLogs'
+import { AdminTasks } from '@/components/admin/AdminTasks'
 import { initSocket } from '@/lib/socket-client'
 import { Toaster as ShadcnToaster } from '@/components/ui/toaster'
 import { Toaster as SonnerToaster } from '@/components/ui/sonner'
@@ -111,8 +112,10 @@ export default function Home() {
         case 'admin_payments': return <AdminPayments />
         case 'admin_wallets': return <AdminWallets />
         case 'admin_tickets': return <AdminTickets />
+        case 'admin_tasks': return <AdminTasks />
         case 'admin_settings': return <AdminSettings />
         case 'admin_logs': return <AdminLogs />
+        case 'notifications': return <NotificationsView />
         default: return <AdminDashboard />
       }
     }

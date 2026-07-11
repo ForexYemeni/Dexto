@@ -61,6 +61,7 @@ type ViewKey =
   | 'admin_payments'
   | 'admin_wallets'
   | 'admin_tickets'
+  | 'admin_tasks'
   | 'admin_settings'
   | 'admin_logs'
   | 'login'

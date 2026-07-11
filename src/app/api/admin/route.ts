@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   if (section === 'deposits') return getDeposits(url)
   if (section === 'withdrawals') return getWithdrawals(url)
   if (section === 'wallets') return getWallets()
+  if (section === 'tasks') return getTasks()
   if (section === 'tickets') return getTickets()
   if (section === 'settings') return getSettings()
   if (section === 'security_logs') return getSecurityLogs(url)
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
     case 'toggle_wallet': return toggleWallet(body.walletId)
     case 'reply_ticket': return replyTicket(body, admin.userId)
     case 'close_ticket': return closeTicket(body.ticketId)
+    case 'create_task': return createTask(body)
+    case 'update_task': return updateTask(body)
+    case 'delete_task': return deleteTask(body.taskId)
+    case 'toggle_task': return toggleTask(body.taskId)
     case 'update_settings': return updateSettings(body)
     case 'update_admin_credentials': return updateAdminCredentials(body, admin.userId)
   }
@@ -736,5 +741,81 @@ async function updateAdminCredentials(body: any, adminId: string) {
     message: 'Credentials updated. Please login again with new credentials.',
     clearedSession: true,
   })
+}
+
+// ===== Tasks Management =====
+async function getTasks() {
+  const tasks = await db.task.findMany({ orderBy: { createdAt: 'asc' } })
+  return NextResponse.json({
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      titleAr: t.titleAr,
+      description: t.description,
+      descriptionAr: t.descriptionAr,
+      type: t.type,
+      rewardAmount: t.rewardAmount,
+      rewardPoints: t.rewardPoints,
+      isActive: t.isActive,
+      createdAt: t.createdAt.toISOString(),
+    })),
+  })
+}
+
+async function createTask(body: any) {
+  try {
+    const { id, createdAt, ...taskData } = body
+    const safeData = {
+      title: taskData.title || 'Task',
+      titleAr: taskData.titleAr || 'مهمة',
+      description: taskData.description || null,
+      descriptionAr: taskData.descriptionAr || null,
+      type: taskData.type || 'custom',
+      rewardAmount: Number(taskData.rewardAmount) || 0,
+      rewardPoints: Number(taskData.rewardPoints) || 0,
+      isActive: taskData.isActive !== undefined ? taskData.isActive : true,
+    }
+    const task = await db.task.create({ data: safeData })
+    return NextResponse.json({ success: true, task })
+  } catch (error: any) {
+    console.error('createTask error:', error)
+    return NextResponse.json({ error: error.message || 'create_failed' }, { status: 500 })
+  }
+}
+
+async function updateTask(body: any) {
+  try {
+    const { taskId, id, createdAt, ...data } = body
+    if (!taskId) {
+      return NextResponse.json({ error: 'task_id_required' }, { status: 400 })
+    }
+    const updateData: any = {}
+    if (data.title !== undefined) updateData.title = data.title
+    if (data.titleAr !== undefined) updateData.titleAr = data.titleAr
+    if (data.description !== undefined) updateData.description = data.description
+    if (data.descriptionAr !== undefined) updateData.descriptionAr = data.descriptionAr
+    if (data.type !== undefined) updateData.type = data.type
+    if (data.rewardAmount !== undefined) updateData.rewardAmount = Number(data.rewardAmount)
+    if (data.rewardPoints !== undefined) updateData.rewardPoints = Number(data.rewardPoints)
+    if (data.isActive !== undefined) updateData.isActive = data.isActive
+
+    const task = await db.task.update({ where: { id: taskId }, data: updateData })
+    return NextResponse.json({ success: true, task })
+  } catch (error: any) {
+    console.error('updateTask error:', error)
+    return NextResponse.json({ error: error.message || 'update_failed' }, { status: 500 })
+  }
+}
+
+async function deleteTask(taskId: string) {
+  await db.task.delete({ where: { id: taskId } })
+  return NextResponse.json({ success: true })
+}
+
+async function toggleTask(taskId: string) {
+  const task = await db.task.findUnique({ where: { id: taskId } })
+  if (!task) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  await db.task.update({ where: { id: taskId }, data: { isActive: !task.isActive } })
+  return NextResponse.json({ success: true })
 }
 

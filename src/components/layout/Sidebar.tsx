@@ -24,10 +24,39 @@ export function Sidebar() {
   const { t, isRTL, locale } = useI18n()
   const { view, setView, sidebarOpen, setSidebarOpen } = useUIStore()
   const { user } = useAuthStore()
-  const { unreadCount } = useNotificationStore()
+  const { unreadCount, setNotifications } = useNotificationStore()
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const logout = useAuthStore((s) => s.logout)
+
+  // Auto-poll notifications every 15 seconds
+  useEffect(() => {
+    if (!user) return
+
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch('/api/notifications', {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.notifications) {
+            setNotifications(data.notifications)
+          }
+        }
+      } catch (e) {
+        // silent fail
+      }
+    }
+
+    // Fetch immediately
+    fetchNotifications()
+
+    // Poll every 15 seconds
+    const interval = setInterval(fetchNotifications, 15000)
+    return () => clearInterval(interval)
+  }, [user?.id, setNotifications])
 
   // Fetch platform name dynamically
   const [platformName, setPlatformName] = useState<string>('')
@@ -49,6 +78,7 @@ export function Sidebar() {
     { view: 'admin_plans', label: t('miningManagement'), icon: <Pickaxe className="w-5 h-5" /> },
     { view: 'admin_payments', label: t('paymentManagement'), icon: <DollarSign className="w-5 h-5" /> },
     { view: 'admin_wallets', label: t('networks'), icon: <Wallet className="w-5 h-5" /> },
+    { view: 'admin_tasks', label: t('tasks'), icon: <CheckSquare className="w-5 h-5" /> },
     { view: 'admin_tickets', label: t('supportTickets'), icon: <LifeBuoy className="w-5 h-5" /> },
     { view: 'admin_settings', label: t('platformSettings'), icon: <SettingsIcon className="w-5 h-5" /> },
     { view: 'admin_logs', label: t('securityLogs'), icon: <ShieldCheck className="w-5 h-5" /> },
@@ -247,6 +277,7 @@ export function TopBar() {
     admin_payments: t('paymentManagement'),
     admin_wallets: t('networks'),
     admin_tickets: t('supportTickets'),
+    admin_tasks: t('tasks'),
     admin_settings: t('platformSettings'),
     admin_logs: t('securityLogs'),
   }
@@ -274,20 +305,18 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Show notifications bell only for regular users */}
-        {!isAdmin && (
-          <button
-            onClick={() => setView('notifications')}
-            className="relative glass rounded-xl p-2.5 text-white hover:bg-white/10 transition-colors"
-          >
-            <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-        )}
+        {/* Notifications bell - show for BOTH admin and users */}
+        <button
+          onClick={() => setView('notifications')}
+          className="relative glass rounded-xl p-2.5 text-white hover:bg-white/10 transition-colors"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center animate-pulse">
+              {unreadCount}
+            </span>
+          )}
+        </button>
 
         <div className="glass rounded-xl p-2 flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">

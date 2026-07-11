@@ -49,16 +49,23 @@ export function DepositView() {
     fetchData()
   }, [])
 
-  // Generate QR code when network changes
+  // Generate QR code when network or wallet address changes
   useEffect(() => {
     if (!data || !selectedNetwork) return
     const wallet = data.wallets.find((w) => w.network === selectedNetwork)
-    if (wallet) {
-      QRCode.toDataURL(wallet.address, { width: 240, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+    if (wallet && wallet.address) {
+      QRCode.toDataURL(wallet.address, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      })
         .then(setQrUrl)
         .catch(() => setQrUrl(''))
+    } else {
+      setQrUrl('')
     }
-  }, [selectedNetwork, data])
+  }, [selectedNetwork, data?.wallets])
 
   const handleCopy = async () => {
     if (!data || !selectedNetwork) return
