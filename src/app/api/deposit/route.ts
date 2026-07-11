@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { processCompletedMining } from '../dashboard/route'
+import { notifyAdmins } from '@/lib/notify-admins'
 
 // GET /api/deposit - get wallets + deposit history
 export async function GET(req: NextRequest) {
@@ -92,6 +93,15 @@ export async function POST(req: NextRequest) {
       action: 'deposit_request',
       details: `Network: ${network}, Amount: ${amount} USDT`,
     },
+  })
+
+  // Notify all admins about new deposit request
+  await notifyAdmins({
+    type: 'deposit',
+    title: 'New Deposit Request',
+    titleAr: 'طلب إيداع جديد',
+    message: `User requested deposit of ${amount} USDT via ${network}`,
+    messageAr: `مستخدم طلب إيداع ${amount} USDT عبر شبكة ${network}`,
   })
 
   // Auto-approve if enabled (typically not for production)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { notifyAdmins } from '@/lib/notify-admins'
 
 // GET /api/support - user tickets
 export async function GET(req: NextRequest) {
@@ -63,6 +64,15 @@ export async function POST(req: NextRequest) {
       action: 'support_ticket_created',
       details: `Subject: ${subject}`,
     },
+  })
+
+  // Notify all admins about new support ticket
+  await notifyAdmins({
+    type: 'system',
+    title: 'New Support Ticket',
+    titleAr: 'تذكرة دعم جديدة',
+    message: `New ticket: "${subject}" (Priority: ${priority || 'normal'})`,
+    messageAr: `تذكرة جديدة: "${subject}" (الأولوية: ${priority === 'high' ? 'عالية' : priority === 'low' ? 'منخفضة' : 'عادية'})`,
   })
 
   return NextResponse.json({

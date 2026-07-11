@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { processCompletedMining } from '../dashboard/route'
+import { notifyAdmins } from '@/lib/notify-admins'
 
 // GET /api/withdrawal - get withdrawal history + settings
 export async function GET(req: NextRequest) {
@@ -118,6 +119,15 @@ export async function POST(req: NextRequest) {
       action: 'withdrawal_request',
       details: `Network: ${network}, Amount: ${amount} USDT`,
     },
+  })
+
+  // Notify all admins about new withdrawal request
+  await notifyAdmins({
+    type: 'withdrawal',
+    title: 'New Withdrawal Request',
+    titleAr: 'طلب سحب جديد',
+    message: `User requested withdrawal of ${amount} USDT via ${network} (net: ${netAmount} USDT)`,
+    messageAr: `مستخدم طلب سحب ${amount} USDT عبر شبكة ${network} (الصافي: ${netAmount} USDT)`,
   })
 
   // Auto-approve if enabled

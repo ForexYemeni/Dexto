@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, comparePassword, signToken, setAuthCookie, generateReferralCode, getCurrentUser, clearAuthCookie } from '@/lib/auth'
 import { seedDatabase } from '@/lib/seed'
+import { notifyAdmins } from '@/lib/notify-admins'
 
 // Auto-seed on first request
 let seeded = false
@@ -185,6 +186,15 @@ async function register(req: NextRequest, body: any) {
       message: 'Your account has been created. Start mining to earn profits.',
       messageAr: 'تم إنشاء حسابك. ابدأ التعدين لكسب الأرباح.',
     },
+  })
+
+  // Notify all admins about new user registration
+  await notifyAdmins({
+    type: 'system',
+    title: 'New User Registered',
+    titleAr: 'تسجيل مستخدم جديد',
+    message: `New user: ${name} (${email})${referralCode ? ` via referral: ${referralCode}` : ''}`,
+    messageAr: `مستخدم جديد: ${name} (${email})${referralCode ? ` عبر إحالة: ${referralCode}` : ''}`,
   })
 
   await db.activityLog.create({

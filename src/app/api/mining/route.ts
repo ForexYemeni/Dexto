@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { processCompletedMining } from '../dashboard/route'
+import { notifyAdmins } from '@/lib/notify-admins'
 
 // GET /api/mining - get plans + active sessions + history
 export async function GET(req: NextRequest) {
@@ -197,6 +198,16 @@ async function startMining(userId: string, planId: string, investmentAmount: num
       message: `Your mining for ${plan.name} has started. Expected profit: ${expectedProfit.toFixed(2)} USDT`,
       messageAr: `بدأ التعدين لخطة ${plan.nameAr}. الأرباح المتوقعة: ${expectedProfit.toFixed(2)} USDT`,
     },
+  })
+
+  // Notify all admins about new mining start
+  const miningUser = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
+  await notifyAdmins({
+    type: 'mining',
+    title: 'New Mining Started',
+    titleAr: 'بدء تعدين جديد',
+    message: `${miningUser?.name || 'User'} started mining ${plan.name} with ${investmentAmount} USDT (daily: ${dailyProfit.toFixed(2)} USDT, ${totalDays} days)`,
+    messageAr: `${miningUser?.name || 'مستخدم'} بدأ التعدين ${plan.nameAr} بمبلغ ${investmentAmount} USDT (يومي: ${dailyProfit.toFixed(2)} USDT، ${totalDays} أيام)`,
   })
 
   return NextResponse.json({
