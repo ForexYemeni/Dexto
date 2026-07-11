@@ -93,28 +93,7 @@ export default function AuthPage() {
         })
         const data = await res.json()
 
-        // Debug info to help troubleshoot
-        if (data.debug) {
-          console.log('Forgot password debug:', data.debug)
-        }
-
-        if (data.debug?.googleScriptUrlConfigured === false) {
-          // Google Script not configured
-          toast({
-            variant: 'destructive',
-            title: '❌ ' + (locale === 'ar' ? 'خدمة البريد غير مفعلة' : 'Email service not configured'),
-            description: locale === 'ar'
-              ? 'يرجى تفعيل خدمة البريد من لوحة الإدارة'
-              : 'Please configure email service in Admin Settings',
-          })
-        } else if (data.debug?.emailError) {
-          // Email sending failed
-          toast({
-            variant: 'destructive',
-            title: '❌ ' + (locale === 'ar' ? 'فشل إرسال البريد' : 'Email send failed'),
-            description: data.debug.emailError,
-          })
-        } else if (data.debug?.emailResponseOk === true) {
+        if (data.emailSent) {
           // Email sent successfully
           setForgotSent(true)
           toast({
@@ -124,8 +103,24 @@ export default function AuthPage() {
               ? 'تحقق من بريدك الإلكتروني (البريد الوارد أو الرسائل غير المرغوب فيها)'
               : 'Check your email inbox (or spam folder)',
           })
+        } else if (data.resetUrl) {
+          // Email failed - show reset link directly
+          setForgotSent(true)
+          toast({
+            variant: 'warning',
+            title: '⚠️ ' + (locale === 'ar' ? 'تعذر إرسال البريد - استخدم الرابط' : 'Email failed - use link'),
+            description: locale === 'ar' ? 'اضغط هنا لنسخ الرابط' : 'Click to copy link',
+          })
+          // Show the reset link in a copyable format
+          setTimeout(() => {
+            navigator.clipboard?.writeText(data.resetUrl).catch(() => {})
+            toast({
+              variant: 'success',
+              title: '🔗 ' + (locale === 'ar' ? 'رابط إعادة التعيين' : 'Reset Link'),
+              description: data.resetUrl,
+            })
+          }, 500)
         } else {
-          // Default success message
           setForgotSent(true)
           toast({
             variant: 'success',

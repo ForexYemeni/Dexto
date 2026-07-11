@@ -17,11 +17,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'If the email exists, a reset link has been sent.',
-        debug: { userFound: false }
       })
     }
 
-    // Generate reset token (random string)
+    // Generate reset token
     const token = Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)
     const expires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
@@ -34,69 +33,56 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    const resetUrl = `${req.nextUrl.origin}/?reset=${token}`
+
     // Get settings for Google Script URL
     const settings = await db.systemSetting.findFirst()
     const googleScriptUrl = settings?.googleScriptUrl || ''
-    const emailSecret = settings?.emailServiceSecret || ''
 
-    // Debug info
-    const debug: any = {
-      userFound: true,
-      userEmail: user.email,
-      googleScriptUrlConfigured: googleScriptUrl.length > 10,
-      googleScriptUrlLength: googleScriptUrl.length,
-    }
+    let emailSent = false
+    let emailError = ''
 
-    // If Google Script URL is configured, send email
+    // If Google Script URL is configured, try to send email
     if (googleScriptUrl && googleScriptUrl.length > 10) {
       try {
-        const resetUrl = `${req.nextUrl.origin}/?reset=${token}`
         const subject = 'Dexto - Password Reset'
         const body = `Hello ${user.name},\n\nYou requested a password reset.\n\nClick the link below to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.\n\nDexto Team`
 
-        debug.resetUrl = resetUrl
-        debug.fetchStarted = true
-
         const emailResponse = await fetch(googleScriptUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             email: user.email,
             subject,
             body,
-            secret: emailSecret,
           }),
         })
 
-        debug.emailResponseStatus = emailResponse.status
-        debug.emailResponseOk = emailResponse.ok
-
-        const emailResult = await emailResponse.text()
-        debug.emailResponseBody = emailResult.substring(0, 200)
-
+        if (emailResponse.ok) {
+          emailSent = true
+        } else {
+          emailError = `HTTP ${emailResponse.status}`
+        }
       } catch (e: any) {
-        debug.emailError = e.message
-        console.error('Email send error:', e)
+        emailError = e.message
       }
-    } else {
-      debug.skipEmail = true
-      debug.reason = 'Google Script URL not configured or too short'
     }
 
-    // Always return success (security)
-    // But include debug info to help troubleshoot
+    // Always return success + reset link (for cases where email fails)
+    // The reset link allows the user to reset password directly
     return NextResponse.json({
       success: true,
       message: 'If the email exists, a reset link has been sent.',
-      debug,
+      emailSent,
+      emailError: emailError || undefined,
+      // Always include resetUrl - frontend will show it if email failed
+      resetUrl: emailSent ? undefined : resetUrl,
     })
   } catch (error: any) {
     console.error('Forgot password error:', error)
     return NextResponse.json({
-      success: true, // Still return success for security
+      success: true,
       message: 'If the email exists, a reset link has been sent.',
-      debug: { fatalError: error.message }
     })
   }
 }
