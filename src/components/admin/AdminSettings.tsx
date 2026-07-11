@@ -315,6 +315,25 @@ export function AdminSettings() {
         </div>
       </motion.div>
 
+      {/* Email Service (Google Apps Script) */}
+      <SettingsSection title={locale === 'ar' ? 'خدمة البريد الإلكتروني' : 'Email Service'}>
+        <SettingField
+          label={locale === 'ar' ? 'رابط Google Apps Script' : 'Google Apps Script URL'}
+          value={settings.googleScriptUrl || ''}
+          onChange={(v) => update('googleScriptUrl', v)}
+        />
+        <SettingField
+          label={locale === 'ar' ? 'كلمة سر الخدمة (اختياري)' : 'Service Secret (optional)'}
+          value={settings.emailServiceSecret || ''}
+          onChange={(v) => update('emailServiceSecret', v)}
+        />
+        <p className="text-[10px] text-white/40">
+          {locale === 'ar'
+            ? 'لتفعيل نسيت كلمة المرور، أنشئ Google Apps Script وأضف الرابط هنا. اتركه فارغاً لتعطيل البريد.'
+            : 'To enable forgot password, create a Google Apps Script and add the URL here. Leave empty to disable email.'}
+        </p>
+      </SettingsSection>
+
       {/* Maintenance */}
       <SettingsSection title={t('maintenance')}>
         <label className="flex items-center gap-2 text-white text-sm">

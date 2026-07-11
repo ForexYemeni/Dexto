@@ -139,6 +139,8 @@ export function ProfileView() {
     language: locale,
     theme,
   })
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '' })
+  const [pwLoading, setPwLoading] = useState(false)
 
   useEffect(() => {
     // Fetch user profile
@@ -160,7 +162,6 @@ export function ProfileView() {
   const handleSave = async () => {
     setLoading(true)
     try {
-      // Update language & theme in UI store
       setLocale(form.language as any)
       setTheme(form.theme as any)
       updateUser({
@@ -172,6 +173,41 @@ export function ProfileView() {
       toast({ variant: 'destructive', title: '❌ ' + t('error') })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!pwForm.currentPassword || !pwForm.newPassword) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error'), description: locale === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields' })
+      return
+    }
+    if (pwForm.newPassword.length < 6) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error'), description: locale === 'ar' ? 'كلمة المرور قصيرة جداً' : 'Password too short' })
+      return
+    }
+    setPwLoading(true)
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pwForm),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          current_password_wrong: locale === 'ar' ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect',
+          same_password: locale === 'ar' ? 'كلمة المرور الجديدة مطابقة للقديمة' : 'New password is same as old',
+          password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً' : 'Password too short',
+        }
+        toast({ variant: 'destructive', title: '❌ ' + t('error'), description: errMap[data.error] || t('error') })
+        return
+      }
+      toast({ variant: 'success', title: '✅ ' + (locale === 'ar' ? 'تم تغيير كلمة المرور' : 'Password changed') })
+      setPwForm({ currentPassword: '', newPassword: '' })
+    } catch {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    } finally {
+      setPwLoading(false)
     }
   }
 
@@ -324,6 +360,50 @@ export function ProfileView() {
           </div>
         </motion.div>
       </div>
+
+      {/* Change Password */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass rounded-2xl p-6 border border-amber-500/20"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Lock className="w-5 h-5 text-amber-400" />
+          <h3 className="text-base font-semibold text-white">{t('changePassword')}</h3>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-white/60 mb-1.5 block">{t('currentPassword')}</label>
+            <input
+              type="password"
+              value={pwForm.currentPassword}
+              onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })}
+              placeholder={locale === 'ar' ? 'كلمة المرور الحالية' : 'Current password'}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/60 mb-1.5 block">{t('newPassword')}</label>
+            <input
+              type="password"
+              value={pwForm.newPassword}
+              onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
+              placeholder={locale === 'ar' ? 'كلمة المرور الجديدة (6 أحرف على الأقل)' : 'New password (min 6 chars)'}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+          <button
+            onClick={handleChangePassword}
+            disabled={pwLoading}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {pwLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>
+              <Lock className="w-4 h-4" />
+              {t('changePassword')}
+            </>}
+          </button>
+        </div>
+      </motion.div>
 
       {/* Save button */}
       <div className="flex justify-end">

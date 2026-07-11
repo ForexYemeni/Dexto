@@ -16,9 +16,11 @@ export default function AuthPage() {
   const setUser = useAuthStore((s) => s.setUser)
   const { toast } = useToast()
 
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>('login')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [resetToken, setResetToken] = useState<string>('')
+  const [forgotSent, setForgotSent] = useState(false)
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -30,12 +32,18 @@ export default function AuthPage() {
   const [platformName, setPlatformName] = useState<string>('')
   const [footerText, setFooterText] = useState<string>('')
 
-  // Read referral code from URL + fetch platform settings
+  // Read referral code / reset token from URL + fetch platform settings
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const ref = params.get('ref')
       if (ref) setForm((f) => ({ ...f, referralCode: ref }))
+      // Check for password reset token
+      const reset = params.get('reset')
+      if (reset) {
+        setResetToken(reset)
+        setMode('reset')
+      }
     }
     // Fetch platform name dynamically
     fetch('/api/settings')
@@ -54,10 +62,16 @@ export default function AuthPage() {
   const validate = () => {
     const e: Record<string, string> = {}
     if (mode === 'register' && !form.name) e.name = t('name')
-    if (!form.email) e.email = t('email')
-    if (!form.password) e.password = t('password')
+    if (mode !== 'forgot' && !form.password) e.password = t('password')
+    if (mode === 'forgot' && !form.email) e.email = t('email')
+    if (mode === 'login' && !form.email) e.email = t('email')
     if (mode === 'register') {
+      if (!form.email) e.email = t('email')
       if (!form.agreeToTerms) e.agreeToTerms = t('mustAgreeTerms')
+      if (form.password.length < 6) e.password = t('error')
+    }
+    if (mode === 'reset') {
+      if (!form.password) e.password = t('password')
       if (form.password.length < 6) e.password = t('error')
     }
     setErrors(e)
@@ -70,7 +84,72 @@ export default function AuthPage() {
 
     setLoading(true)
     try {
-      const action = mode === 'login' ? 'login' : mode === 'register' ? 'register' : 'forgot'
+      // Handle forgot password
+      if (mode === 'forgot') {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: form.email }),
+        })
+        const data = await res.json()
+        if (data.devToken) {
+          // Development mode - show reset link
+          toast({
+            variant: 'success',
+            title: '✅ ' + (locale === 'ar' ? 'تم إرسال رابط إعادة التعيين' : 'Reset link sent'),
+            description: locale === 'ar'
+              ? `رابط التطوير: ${window.location.origin}/?reset=${data.devToken}`
+              : `Dev link: ${window.location.origin}/?reset=${data.devToken}`,
+          })
+        } else {
+          setForgotSent(true)
+          toast({
+            variant: 'success',
+            title: '✅ ' + (locale === 'ar' ? 'تم إرسال رابط إعادة التعيين' : 'Reset link sent'),
+            description: locale === 'ar'
+              ? 'إذا كان البريد موجوداً، ستصلك رسالة بإعادة التعيين'
+              : 'If the email exists, you will receive a reset link',
+          })
+        }
+        setLoading(false)
+        return
+      }
+
+      // Handle reset password
+      if (mode === 'reset') {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: resetToken, newPassword: form.password }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast({
+            variant: 'destructive',
+            title: '❌ ' + t('error'),
+            description: data.error === 'invalid_or_expired_token'
+              ? (locale === 'ar' ? 'الرابط منتهي الصلاحية أو غير صالح' : 'Link expired or invalid')
+              : t('error'),
+          })
+          setLoading(false)
+          return
+        }
+        toast({
+          variant: 'success',
+          title: '✅ ' + (locale === 'ar' ? 'تم تغيير كلمة المرور بنجاح' : 'Password reset successfully'),
+          description: locale === 'ar' ? 'يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة' : 'You can now login with your new password',
+        })
+        // Clear URL and go to login
+        window.history.replaceState({}, '', window.location.pathname)
+        setResetToken('')
+        setMode('login')
+        setForm({ ...form, password: '' })
+        setLoading(false)
+        return
+      }
+
+      // Handle login / register
+      const action = mode === 'login' ? 'login' : 'register'
       const payload: any = { action }
       if (mode === 'login') {
         payload.email = form.email
@@ -201,11 +280,13 @@ export default function AuthPage() {
               {mode === 'login' && t('welcomeBack')}
               {mode === 'register' && t('joinNow')}
               {mode === 'forgot' && t('resetPassword')}
+              {mode === 'reset' && (locale === 'ar' ? 'كلمة مرور جديدة' : 'New Password')}
             </h1>
             <p className="text-sm text-white/60">
               {mode === 'login' && t('signInToContinue')}
               {mode === 'register' && t('createAccountToStart')}
               {mode === 'forgot' && t('resetPasswordDesc')}
+              {mode === 'reset' && (locale === 'ar' ? 'أدخل كلمة المرور الجديدة' : 'Enter your new password')}
             </p>
           </div>
 
@@ -223,21 +304,25 @@ export default function AuthPage() {
               />
             )}
 
-            <Field
-              icon={<Mail className="w-4 h-4" />}
-              placeholder={t('email')}
-              value={form.email}
-              onChange={(v) => setForm({ ...form, email: v })}
-              error={errors.email}
-              type="email"
-              isRTL={isRTL}
-            />
+            {/* Email field - show for login, register, forgot (NOT reset) */}
+            {mode !== 'reset' && (
+              <Field
+                icon={<Mail className="w-4 h-4" />}
+                placeholder={t('email')}
+                value={form.email}
+                onChange={(v) => setForm({ ...form, email: v })}
+                error={errors.email}
+                type="email"
+                isRTL={isRTL}
+              />
+            )}
 
+            {/* Password field - show for login, register, reset (NOT forgot) */}
             {mode !== 'forgot' && (
               <div className="relative">
                 <Field
                   icon={<Lock className="w-4 h-4" />}
-                  placeholder={t('password')}
+                  placeholder={mode === 'reset' ? (locale === 'ar' ? 'كلمة المرور الجديدة' : 'New Password') : t('password')}
                   value={form.password}
                   onChange={(v) => setForm({ ...form, password: v })}
                   error={errors.password}
@@ -314,6 +399,7 @@ export default function AuthPage() {
                   {mode === 'login' && t('login')}
                   {mode === 'register' && t('createAccount')}
                   {mode === 'forgot' && t('sendResetLink')}
+                  {mode === 'reset' && (locale === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset Password')}
                   {isRTL ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 </>
               )}
@@ -321,7 +407,7 @@ export default function AuthPage() {
           </form>
 
           {/* Mode switch */}
-          {mode !== 'forgot' && (
+          {mode !== 'forgot' && mode !== 'reset' && (
             <div className="mt-6 text-center text-sm text-white/60">
               {mode === 'login' ? t('dontHaveAccount') : t('alreadyHaveAccount')}{' '}
               <button
@@ -336,7 +422,19 @@ export default function AuthPage() {
           {mode === 'forgot' && (
             <div className="mt-6 text-center text-sm text-white/60">
               <button
-                onClick={() => setMode('login')}
+                onClick={() => { setMode('login'); setForgotSent(false) }}
+                className="text-blue-400 hover:text-blue-300 font-semibold transition-colors inline-flex items-center gap-1"
+              >
+                {isRTL ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+                {t('backToLogin')}
+              </button>
+            </div>
+          )}
+
+          {mode === 'reset' && (
+            <div className="mt-6 text-center text-sm text-white/60">
+              <button
+                onClick={() => { setMode('login'); setResetToken(''); window.history.replaceState({}, '', window.location.pathname) }}
                 className="text-blue-400 hover:text-blue-300 font-semibold transition-colors inline-flex items-center gap-1"
               >
                 {isRTL ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}

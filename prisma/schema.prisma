@@ -32,6 +32,9 @@ model User {
   theme           String   @default("dark")   // dark | light
   avatar          String?
   lastLoginAt     DateTime?
+  // Password reset
+  passwordResetToken  String?
+  passwordResetExpires DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -371,6 +374,9 @@ model SystemSetting {
   privacyContentAr String  @default("")
   faqContent      String   @default("")
   faqContentAr    String   @default("")
+  // Email service (Google Apps Script)
+  googleScriptUrl     String   @default("")
+  emailServiceSecret  String   @default("")
 
   updatedAt       DateTime @updatedAt
 
