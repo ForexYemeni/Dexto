@@ -92,16 +92,40 @@ export default function AuthPage() {
           body: JSON.stringify({ email: form.email }),
         })
         const data = await res.json()
-        if (data.devToken) {
-          // Development mode - show reset link
+
+        // Debug info to help troubleshoot
+        if (data.debug) {
+          console.log('Forgot password debug:', data.debug)
+        }
+
+        if (data.debug?.googleScriptUrlConfigured === false) {
+          // Google Script not configured
+          toast({
+            variant: 'destructive',
+            title: '❌ ' + (locale === 'ar' ? 'خدمة البريد غير مفعلة' : 'Email service not configured'),
+            description: locale === 'ar'
+              ? 'يرجى تفعيل خدمة البريد من لوحة الإدارة'
+              : 'Please configure email service in Admin Settings',
+          })
+        } else if (data.debug?.emailError) {
+          // Email sending failed
+          toast({
+            variant: 'destructive',
+            title: '❌ ' + (locale === 'ar' ? 'فشل إرسال البريد' : 'Email send failed'),
+            description: data.debug.emailError,
+          })
+        } else if (data.debug?.emailResponseOk === true) {
+          // Email sent successfully
+          setForgotSent(true)
           toast({
             variant: 'success',
             title: '✅ ' + (locale === 'ar' ? 'تم إرسال رابط إعادة التعيين' : 'Reset link sent'),
             description: locale === 'ar'
-              ? `رابط التطوير: ${window.location.origin}/?reset=${data.devToken}`
-              : `Dev link: ${window.location.origin}/?reset=${data.devToken}`,
+              ? 'تحقق من بريدك الإلكتروني (البريد الوارد أو الرسائل غير المرغوب فيها)'
+              : 'Check your email inbox (or spam folder)',
           })
         } else {
+          // Default success message
           setForgotSent(true)
           toast({
             variant: 'success',
