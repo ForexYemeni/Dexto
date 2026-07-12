@@ -453,6 +453,7 @@ function ActiveMiningCard({ session }: { session: any }) {
   const dailyProfit = session.dailyProfit || session.expectedProfit
   const totalProfit = dailyProfit * totalDays
   const earnedProfit = dailyProfit * currentDay
+  const isMiningStarted = session.miningStarted ?? true
   const planEndsAt = session.planEndsAt ? new Date(session.planEndsAt).getTime() : null
   const planRemaining = planEndsAt ? Math.max(0, planEndsAt - now) : 0
   const planDaysLeft = Math.ceil(planRemaining / (24 * 60 * 60 * 1000))
@@ -522,14 +523,21 @@ function ActiveMiningCard({ session }: { session: any }) {
           </div>
         </div>
 
-        {/* Countdown - current 24h cycle */}
+        {/* Countdown - waiting or mining */}
         <div className="text-center mb-4">
           <p className="text-[10px] text-white/40 mb-1">
-            {locale === 'ar' ? 'الوقت المتبقي لليوم' : 'Time Remaining Today'}
+            {isMiningStarted
+              ? (locale === 'ar' ? 'الوقت المتبقي للتعدين' : 'Mining Time Remaining')
+              : (locale === 'ar' ? 'الوقت المتبقي لبدء التعدين' : 'Time Until Mining Starts')}
           </p>
           <p className="text-3xl font-bold gradient-text-electric tabular-nums">
             {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
           </p>
+          {!isMiningStarted && (
+            <span className="inline-block mt-2 text-[10px] px-3 py-1 rounded-full bg-amber-500/20 text-amber-400">
+              {locale === 'ar' ? '⏳ في انتظار بدء دورة التعدين' : '⏳ Waiting for mining cycle to start'}
+            </span>
+          )}
         </div>
 
         {/* Progress bar - current cycle */}

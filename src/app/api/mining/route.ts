@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
       startedAt: s.startedAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
       planEndsAt: s.planEndsAt?.toISOString() || null,
+      miningStarted: s.miningStarted ?? true,
       status: s.status,
     })),
     history: history.map((h) => ({
@@ -138,10 +139,40 @@ async function startMining(userId: string, planId: string, investmentAmount: num
   const dailyProfit = investmentAmount * plan.dailyProfitRate
   const totalDays = plan.totalDays || 7
 
-  // Start time = now
+  // Get admin-set mining start time
+  const settings = await db.systemSetting.findFirst()
+  const miningStartTime = settings?.miningStartTime || '' // e.g., "00:00"
+
   const startedAt = new Date()
-  const endsAt = new Date(startedAt.getTime() + plan.durationHours * 60 * 60 * 1000)
-  const planEndsAt = new Date(startedAt.getTime() + totalDays * 24 * 60 * 60 * 1000)
+
+  let endsAt: Date
+  let miningStarted: boolean
+
+  if (miningStartTime && miningStartTime.includes(':')) {
+    // Admin has set a specific mining start time
+    // Calculate next occurrence of that time
+    const [hours, minutes] = miningStartTime.split(':').map(Number)
+    const now = new Date()
+    
+    // Create date for today at the specified time (in server timezone, but conceptually Mecca time)
+    const todayTarget = new Date(now)
+    todayTarget.setHours(hours, minutes, 0, 0)
+    
+    // If the target time has already passed today, use tomorrow
+    if (todayTarget <= now) {
+      todayTarget.setDate(todayTarget.getDate() + 1)
+    }
+    
+    // endsAt = next mining cycle start time (waiting phase)
+    endsAt = todayTarget
+    miningStarted = false // waiting for cycle to start
+  } else {
+    // No admin-set time: mining starts immediately (backward compatible)
+    endsAt = new Date(startedAt.getTime() + plan.durationHours * 60 * 60 * 1000)
+    miningStarted = true // mining in progress immediately
+  }
+
+  const planEndsAt = new Date(startedAt.getTime() + (totalDays + 1) * 24 * 60 * 60 * 1000)
 
   // Deduct investment (capital) from balance - CAPITAL IS LOCKED
   await db.user.update({
@@ -158,10 +189,11 @@ async function startMining(userId: string, planId: string, investmentAmount: num
       userId,
       planId,
       investmentAmount,
-      expectedProfit: dailyProfit,  // daily profit per cycle
+      expectedProfit: dailyProfit,
       dailyProfit,
       totalDays,
-      currentDay: 0,  // day 0 = first day in progress
+      currentDay: 0,
+      miningStarted,
       startedAt,
       endsAt,
       planEndsAt,

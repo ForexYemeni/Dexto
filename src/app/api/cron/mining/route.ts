@@ -39,18 +39,40 @@ export async function GET(req: NextRequest) {
           const capital = session.investmentAmount || 0
           const totalDays = session.totalDays || session.plan?.totalDays || 1
           const currentDay = session.currentDay ?? 0
-          const nextDay = currentDay + 1
+          const isMiningStarted = session.miningStarted ?? true
           const userId = session.userId
 
-          if (nextDay >= totalDays) {
-            // ===== PLAN COMPLETE =====
+          // Get settings for mining start time
+          const settings = await tx.systemSetting.findFirst()
+          const miningStartTime = settings?.miningStartTime || ''
+
+          // ===== PHASE 1: WAITING → MINING START =====
+          if (!isMiningStarted) {
+            const miningEnd = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
             await tx.userMiningSession.update({
               where: { id: session.id },
+              data: { miningStarted: true, endsAt: miningEnd },
+            })
+            await tx.notification.create({
               data: {
-                status: 'completed',
-                currentDay: totalDays,
-                completedAt: now,
+                userId, type: 'mining',
+                title: 'Mining Started!', titleAr: 'بدأ التعدين!',
+                message: `Mining for ${session.plan.name} started. Daily profit: ${profit.toFixed(2)} USDT`,
+                messageAr: `بدأ التعدين لخطة ${session.plan.nameAr}. الربح اليومي: ${profit.toFixed(2)} USDT`,
               },
+            })
+            processedCount++
+            return
+          }
+
+          // ===== PHASE 2: MINING CYCLE COMPLETE =====
+          const nextDay = currentDay + 1
+
+          if (nextDay >= totalDays) {
+            // PLAN COMPLETE
+            await tx.userMiningSession.update({
+              where: { id: session.id },
+              data: { status: 'completed', currentDay: totalDays, completedAt: now },
             })
 
             await tx.user.update({
@@ -111,13 +133,27 @@ export async function GET(req: NextRequest) {
             // Referral commissions
             await processReferralCommissionCron(userId, profit, session.id, tx)
           } else {
-            // ===== DAILY CYCLE =====
-            const newEndsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+            // ===== DAILY CYCLE - Add profit, start next waiting phase =====
+            let newEndsAt: Date
+            let newMiningStarted: boolean
+
+            if (miningStartTime && miningStartTime.includes(':')) {
+              const [hours, minutes] = miningStartTime.split(':').map(Number)
+              const nextTarget = new Date(now)
+              nextTarget.setHours(hours, minutes, 0, 0)
+              if (nextTarget <= now) nextTarget.setDate(nextTarget.getDate() + 1)
+              newEndsAt = nextTarget
+              newMiningStarted = false
+            } else {
+              newEndsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+              newMiningStarted = true
+            }
 
             await tx.userMiningSession.update({
               where: { id: session.id },
               data: {
                 currentDay: nextDay,
+                miningStarted: newMiningStarted,
                 endsAt: newEndsAt,
               },
             })

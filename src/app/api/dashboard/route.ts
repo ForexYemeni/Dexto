@@ -125,6 +125,7 @@ export async function GET(req: NextRequest) {
       startedAt: s.startedAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
       planEndsAt: s.planEndsAt?.toISOString() || null,
+      miningStarted: s.miningStarted ?? true,
       status: s.status,
     })),
     recentTransactions: recentTransactions.map((t) => ({
@@ -181,9 +182,43 @@ export async function processCompletedMining(userId: string) {
       const capital = session.investmentAmount || 0
       const totalDays = session.totalDays || session.plan?.totalDays || 1
       const currentDay = session.currentDay ?? 0
+      const isMiningStarted = session.miningStarted ?? true
+
+      // Get admin-set mining start time for next cycle alignment
+      const settings = await tx.systemSetting.findFirst()
+      const miningStartTime = settings?.miningStartTime || ''
+
+      // ===== PHASE 1: WAITING → MINING START =====
+      if (!isMiningStarted) {
+        // Waiting phase ended → mining phase begins
+        // Set endsAt to mining end (24h from now)
+        const miningEnd = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+
+        await tx.userMiningSession.update({
+          where: { id: session.id },
+          data: {
+            miningStarted: true,
+            endsAt: miningEnd,
+          },
+        })
+
+        // Notification - Mining started
+        await tx.notification.create({
+          data: {
+            userId,
+            type: 'mining',
+            title: 'Mining Started!',
+            titleAr: 'بدأ التعدين!',
+            message: `Your mining for ${session.plan.name} has started. Daily profit: ${profit.toFixed(2)} USDT`,
+            messageAr: `بدأ التعدين لخطة ${session.plan.nameAr}. الربح اليومي: ${profit.toFixed(2)} USDT`,
+          },
+        })
+        return
+      }
+
+      // ===== PHASE 2: MINING CYCLE COMPLETE =====
       const nextDay = currentDay + 1
 
-      // Check if this is the LAST day
       if (nextDay >= totalDays) {
         // ===== PLAN COMPLETE - Return capital + last profit =====
         await tx.userMiningSession.update({
@@ -195,7 +230,6 @@ export async function processCompletedMining(userId: string) {
           },
         })
 
-        // Return capital + last daily profit to balance
         await tx.user.update({
           where: { id: userId },
           data: {
@@ -206,71 +240,70 @@ export async function processCompletedMining(userId: string) {
           },
         })
 
-        // Record capital return
         await tx.transaction.create({
           data: {
-            userId,
-            type: 'mining_profit',
-            amount: capital,
-            status: 'completed',
+            userId, type: 'mining_profit', amount: capital, status: 'completed',
             description: `Capital returned - ${session.plan.name} (Plan Complete)`,
             reference: session.id,
           },
         })
 
-        // Record last daily profit
         await tx.transaction.create({
           data: {
-            userId,
-            type: 'mining_profit',
-            amount: profit,
-            status: 'completed',
+            userId, type: 'mining_profit', amount: profit, status: 'completed',
             description: `Daily profit Day ${totalDays}/${totalDays} - ${session.plan.name}`,
             reference: session.id,
           },
         })
 
-        // Add to mining history
         await tx.miningHistory.create({
           data: {
-            userId,
-            planId: session.planId,
-            planName: session.plan.name,
-            investmentAmount: capital,
-            profitAmount: profit * totalDays, // total profit over all days
-            startedAt: session.startedAt,
-            completedAt: now,
+            userId, planId: session.planId, planName: session.plan.name,
+            investmentAmount: capital, profitAmount: profit * totalDays,
+            startedAt: session.startedAt, completedAt: now,
           },
         })
 
-        // Notification - Plan complete
         await tx.notification.create({
           data: {
-            userId,
-            type: 'mining',
-            title: 'Plan Completed!',
-            titleAr: 'اكتملت الخطة!',
-            message: `Your ${session.plan.name} has completed all ${totalDays} days. Capital (${capital.toFixed(2)} USDT) + last profit (${profit.toFixed(2)} USDT) added to your balance.`,
-            messageAr: `اكتملت خطة ${session.plan.nameAr} لجميع أيام ${totalDays}. تم إرجاع رأس المال (${capital.toFixed(2)} USDT) + آخر ربح (${profit.toFixed(2)} USDT) إلى رصيدك.`,
+            userId, type: 'mining',
+            title: 'Plan Completed!', titleAr: 'اكتملت الخطة!',
+            message: `Your ${session.plan.name} completed all ${totalDays} days. Capital (${capital.toFixed(2)}) + profit (${profit.toFixed(2)}) added.`,
+            messageAr: `اكتملت خطة ${session.plan.nameAr} لجميع ${totalDays} أيام. رأس المال (${capital.toFixed(2)}) + الربح (${profit.toFixed(2)}) أضيفت لرصيدك.`,
           },
         })
 
-        // Process referral commissions on profit
         await processReferralCommission(userId, profit, session.id, tx)
       } else {
-        // ===== DAILY CYCLE - Add profit only, capital stays LOCKED =====
-        const newEndsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+        // ===== DAILY CYCLE COMPLETE - Add profit, start next waiting phase =====
+        let newEndsAt: Date
+
+        if (miningStartTime && miningStartTime.includes(':')) {
+          // Align next cycle to admin-set time
+          const [hours, minutes] = miningStartTime.split(':').map(Number)
+          const nextTarget = new Date(now)
+          nextTarget.setHours(hours, minutes, 0, 0)
+          if (nextTarget <= now) {
+            nextTarget.setDate(nextTarget.getDate() + 1)
+          }
+          newEndsAt = nextTarget
+        } else {
+          // No admin-set time: continue immediately
+          newEndsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+        }
+
+        const newMiningStarted = !miningStartTime || !miningStartTime.includes(':')
 
         await tx.userMiningSession.update({
           where: { id: session.id },
           data: {
             currentDay: nextDay,
-            endsAt: newEndsAt,  // extend to next 24h cycle
-            // status stays 'active', capital stays locked
+            miningStarted: newMiningStarted,
+            endsAt: newEndsAt,
           },
         })
 
-        // Add ONLY daily profit to balance (capital is still locked)
+        // Add daily profit
         await tx.user.update({
           where: { id: userId },
           data: {
@@ -281,31 +314,24 @@ export async function processCompletedMining(userId: string) {
           },
         })
 
-        // Record daily profit transaction
         await tx.transaction.create({
           data: {
-            userId,
-            type: 'mining_profit',
-            amount: profit,
-            status: 'completed',
+            userId, type: 'mining_profit', amount: profit, status: 'completed',
             description: `Daily profit Day ${nextDay}/${totalDays} - ${session.plan.name}`,
             reference: session.id,
           },
         })
 
-        // Notification - Daily profit
         await tx.notification.create({
           data: {
-            userId,
-            type: 'mining',
+            userId, type: 'mining',
             title: `Daily Profit - Day ${nextDay}/${totalDays}`,
             titleAr: `ربح يومي - اليوم ${nextDay}/${totalDays}`,
-            message: `You earned ${profit.toFixed(2)} USDT from ${session.plan.name}. Capital remains locked until day ${totalDays}.`,
-            messageAr: `ربحت ${profit.toFixed(2)} USDT من خطة ${session.plan.nameAr}. رأس المال مقفل حتى اليوم ${totalDays}.`,
+            message: `You earned ${profit.toFixed(2)} USDT from ${session.plan.name}. Capital locked until day ${totalDays}.`,
+            messageAr: `ربحت ${profit.toFixed(2)} USDT من ${session.plan.nameAr}. رأس المال مقفل حتى اليوم ${totalDays}.`,
           },
         })
 
-        // Process referral commissions on daily profit
         await processReferralCommission(userId, profit, session.id, tx)
       }
     })

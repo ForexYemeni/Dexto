@@ -162,6 +162,22 @@ export function AdminSettings() {
       <SettingsSection title={t('miningSettings')}>
         <SettingField label={`${t('duration')} (${t('hours')})`} type="number" value={settings.globalMiningDuration.toString()} onChange={(v) => update('globalMiningDuration', Number(v))} />
         <SettingField label={`${t('dailyProfitRate')} (default %)`} type="number" value={(settings.globalMiningProfitRate * 100).toString()} onChange={(v) => update('globalMiningProfitRate', Number(v) / 100)} />
+        <div>
+          <label className="text-xs text-white/60 mb-1.5 block">
+            {locale === 'ar' ? 'وقت بداية التعدين (توقيت مكة) - اتركه فارغاً للبدء فوراً' : 'Mining Start Time (Mecca time) - leave empty for immediate'}
+          </label>
+          <input
+            type="time"
+            value={settings.miningStartTime || ''}
+            onChange={(e) => update('miningStartTime', e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+          />
+          <p className="text-[10px] text-white/40 mt-1">
+            {locale === 'ar'
+              ? 'مثال: 00:00 = منتصف الليل. عند الشراء، يظهر العد التنازلي حتى هذا الوقت ثم يبدأ التعدين.'
+              : 'Example: 00:00 = midnight. When buying, countdown shows until this time then mining starts.'}
+          </p>
+        </div>
       </SettingsSection>
 
       {/* Deposit settings */}

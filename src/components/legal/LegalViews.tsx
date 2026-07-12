@@ -25,9 +25,14 @@ export function LegalView({ type }: { type: 'faq' | 'terms' | 'privacy' }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((data: Settings) => {
+    let cancelled = false
+    const loadData = async () => {
+      try {
+        const res = await fetch('/api/settings', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Failed')
+        const data: Settings = await res.json()
+        if (cancelled) return
+
         if (type === 'faq') {
           const raw = locale === 'ar' ? data.faqContentAr : data.faqContent
           try {
@@ -37,12 +42,23 @@ export function LegalView({ type }: { type: 'faq' | 'terms' | 'privacy' }) {
             setContent([])
           }
         } else if (type === 'terms') {
-          setContent(locale === 'ar' ? data.termsContentAr : data.termsContent)
+          const text = locale === 'ar' ? data.termsContentAr : data.termsContent
+          setContent(text || (locale === 'ar' ? 'الشروط والأحكام قيد التحديث.' : 'Terms are being updated.'))
         } else if (type === 'privacy') {
-          setContent(locale === 'ar' ? data.privacyContentAr : data.privacyContent)
+          const text = locale === 'ar' ? data.privacyContentAr : data.privacyContent
+          setContent(text || (locale === 'ar' ? 'سياسة الخصوصية قيد التحديث.' : 'Privacy policy is being updated.'))
         }
-      })
-      .finally(() => setLoading(false))
+      } catch (e) {
+        if (cancelled) return
+        // Fallback content
+        if (type === 'faq') setContent([])
+        else setContent(locale === 'ar' ? 'المحتوى قيد التحديث. يرجى المحاولة لاحقاً.' : 'Content is being updated. Please try later.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadData()
+    return () => { cancelled = true }
   }, [type, locale])
 
   const titles = {

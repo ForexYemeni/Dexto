@@ -88,8 +88,9 @@ model UserMiningSession {
   dailyProfit     Float    // profit per day
   totalDays       Int      @default(7)   // total days for this session
   currentDay      Int      @default(0)   // current day completed (0 = first day in progress)
+  miningStarted   Boolean  @default(false) // false = waiting for cycle start, true = mining in progress
   startedAt       DateTime
-  endsAt          DateTime  // end of current 24h cycle
+  endsAt          DateTime  // end of current phase (waiting countdown OR mining countdown)
   planEndsAt      DateTime? // end of entire plan (when capital is returned)
   status          String   @default("active") // active | completed | cancelled
   completedAt     DateTime?
@@ -377,6 +378,8 @@ model SystemSetting {
   // Email service (Google Apps Script)
   googleScriptUrl     String   @default("")
   emailServiceSecret  String   @default("")
+  // Mining schedule
+  miningStartTime     String   @default("") // HH:MM format (empty = immediate, "00:00" = midnight Mecca time)
 
   updatedAt       DateTime @updatedAt
 
