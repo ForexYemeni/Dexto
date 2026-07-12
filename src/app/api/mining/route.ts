@@ -149,23 +149,31 @@ async function startMining(userId: string, planId: string, investmentAmount: num
   let miningStarted: boolean
 
   if (miningStartTime && miningStartTime.includes(':')) {
-    // Admin has set a specific mining start time
-    // Calculate next occurrence of that time
-    const [hours, minutes] = miningStartTime.split(':').map(Number)
+    // Admin has set a specific mining start time (in Mecca timezone = UTC+3)
+    const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
     const now = new Date()
-    
-    // Create date for today at the specified time (in server timezone, but conceptually Mecca time)
-    const todayTarget = new Date(now)
-    todayTarget.setHours(hours, minutes, 0, 0)
-    
-    // If the target time has already passed today, use tomorrow
-    if (todayTarget <= now) {
-      todayTarget.setDate(todayTarget.getDate() + 1)
+
+    // Convert target time from Mecca (UTC+3) to UTC
+    // Mecca is UTC+3, so if target is 00:00 Mecca = 21:00 UTC previous day
+    let targetUTCHours = targetHours - 3
+    let targetDateOffset = 0
+    if (targetUTCHours < 0) {
+      targetUTCHours += 24
+      targetDateOffset = -1 // previous day in UTC
     }
-    
-    // endsAt = next mining cycle start time (waiting phase)
+
+    // Create date for today at the specified UTC time
+    const todayTarget = new Date(now)
+    todayTarget.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
+    todayTarget.setUTCDate(todayTarget.getUTCDate() + targetDateOffset)
+
+    // If the target time has already passed, use tomorrow
+    if (todayTarget <= now) {
+      todayTarget.setUTCDate(todayTarget.getUTCDate() + 1)
+    }
+
     endsAt = todayTarget
-    miningStarted = false // waiting for cycle to start
+    miningStarted = false
   } else {
     // No admin-set time: mining starts immediately (backward compatible)
     endsAt = new Date(startedAt.getTime() + plan.durationHours * 60 * 60 * 1000)

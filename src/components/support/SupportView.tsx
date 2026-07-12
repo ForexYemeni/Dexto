@@ -28,7 +28,7 @@ export function SupportView() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/support')
+      const res = await fetch('/api/support', { cache: 'no-store' })
       const json = await res.json()
       setData(json)
     } catch (e) {
@@ -116,19 +116,36 @@ export function SupportView() {
           </div>
           <div className="grid md:grid-cols-3 gap-3">
             {data.supportEmail && (
-              <div className="glass rounded-xl p-3 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-blue-400" />
+              <a
+                href={`mailto:${data.supportEmail}`}
+                className="glass rounded-xl p-3 flex items-center gap-2 hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <Mail className="w-4 h-4 text-blue-400 shrink-0" />
                 <span className="text-xs text-white truncate">{data.supportEmail}</span>
-              </div>
+              </a>
             )}
             {data.supportPhone && (
-              <div className="glass rounded-xl p-3 flex items-center gap-2">
-                <Phone className="w-4 h-4 text-green-400" />
+              <a
+                href={`tel:${data.supportPhone}`}
+                className="glass rounded-xl p-3 flex items-center gap-2 hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <Phone className="w-4 h-4 text-green-400 shrink-0" />
                 <span className="text-xs text-white truncate">{data.supportPhone}</span>
-              </div>
+              </a>
+            )}
+            {data.supportTelegram && (
+              <a
+                href={data.supportTelegram.startsWith('http') ? data.supportTelegram : `https://t.me/${data.supportTelegram.replace('@', '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass rounded-xl p-3 flex items-center gap-2 hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4 text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M23.91 3.79L20.3 20.84c-.25 1.21-.98 1.5-2 .94l-5.5-4.07-2.66 2.57c-.3.3-.55.56-1.1.56-.72 0-.6-.27-.84-.95L6.3 13.7l-5.45-1.7c-1.18-.35-1.19-1.16.26-1.75l21.26-8.2c.97-.43 1.9.24 1.53 1.73z"/></svg>
+                <span className="text-xs text-white truncate">{data.supportTelegram}</span>
+              </a>
             )}
             <div className="glass rounded-xl p-3 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="text-xs text-white">{t('responseTime')}</span>
             </div>
           </div>

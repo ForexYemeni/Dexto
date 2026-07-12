@@ -279,12 +279,19 @@ export async function processCompletedMining(userId: string) {
         let newEndsAt: Date
 
         if (miningStartTime && miningStartTime.includes(':')) {
-          // Align next cycle to admin-set time
-          const [hours, minutes] = miningStartTime.split(':').map(Number)
+          // Convert Mecca time (UTC+3) to UTC
+          const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
+          let targetUTCHours = targetHours - 3
+          let targetDateOffset = 0
+          if (targetUTCHours < 0) {
+            targetUTCHours += 24
+            targetDateOffset = -1
+          }
           const nextTarget = new Date(now)
-          nextTarget.setHours(hours, minutes, 0, 0)
+          nextTarget.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
+          nextTarget.setUTCDate(nextTarget.getUTCDate() + targetDateOffset)
           if (nextTarget <= now) {
-            nextTarget.setDate(nextTarget.getDate() + 1)
+            nextTarget.setUTCDate(nextTarget.getUTCDate() + 1)
           }
           newEndsAt = nextTarget
         } else {

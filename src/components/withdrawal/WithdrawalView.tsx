@@ -34,7 +34,7 @@ export function WithdrawalView() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/withdrawal')
+      const res = await fetch('/api/withdrawal', { cache: 'no-store' })
       const json = await res.json()
       setData(json)
       updateUser({ balance: json.balance })

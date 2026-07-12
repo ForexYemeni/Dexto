@@ -34,9 +34,9 @@ export function ReferralsView() {
   const [qrUrl, setQrUrl] = useState('')
 
   useEffect(() => {
-    fetch('/api/referrals')
+    fetch('/api/referrals', { cache: 'no-store' })
       .then((r) => r.json())
-      .then(setData)
+      .then(setData).catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [])
 

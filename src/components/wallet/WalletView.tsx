@@ -28,9 +28,9 @@ export function WalletView() {
   const [filter, setFilter] = useState<string>('all')
 
   useEffect(() => {
-    fetch('/api/wallet')
+    fetch('/api/wallet', { cache: 'no-store' })
       .then((r) => r.json())
-      .then(setData)
+      .then(setData).catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [])
 

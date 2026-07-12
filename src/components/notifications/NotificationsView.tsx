@@ -18,11 +18,12 @@ export function NotificationsView() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/notifications')
+    fetch('/api/notifications', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         setNotifications(data.notifications || [])
       })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 

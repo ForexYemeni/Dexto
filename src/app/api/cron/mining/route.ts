@@ -138,10 +138,14 @@ export async function GET(req: NextRequest) {
             let newMiningStarted: boolean
 
             if (miningStartTime && miningStartTime.includes(':')) {
-              const [hours, minutes] = miningStartTime.split(':').map(Number)
+              const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
+              let targetUTCHours = targetHours - 3
+              let targetDateOffset = 0
+              if (targetUTCHours < 0) { targetUTCHours += 24; targetDateOffset = -1 }
               const nextTarget = new Date(now)
-              nextTarget.setHours(hours, minutes, 0, 0)
-              if (nextTarget <= now) nextTarget.setDate(nextTarget.getDate() + 1)
+              nextTarget.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
+              nextTarget.setUTCDate(nextTarget.getUTCDate() + targetDateOffset)
+              if (nextTarget <= now) nextTarget.setUTCDate(nextTarget.getUTCDate() + 1)
               newEndsAt = nextTarget
               newMiningStarted = false
             } else {

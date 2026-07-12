@@ -29,19 +29,16 @@ export function PWAInstallCard() {
       return
     }
 
-    // Listen for beforeinstallprompt
+    // Listen for beforeinstallprompt (Chrome/Edge)
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
-      // Show card after 3 seconds delay for better UX
-      setTimeout(() => setShowCard(true), 3000)
     }
-
     window.addEventListener('beforeinstallprompt', handler)
 
-    // Also check if we should show a custom prompt (for iOS which doesn't support beforeinstallprompt)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    if (isIOS && !isInstalled) {
+    // Always show the install card after 5 seconds (for all browsers)
+    // unless already installed or dismissed
+    if (!isInstalled && !dismissed) {
       setTimeout(() => setShowCard(true), 5000)
     }
 

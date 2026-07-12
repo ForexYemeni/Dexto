@@ -24,7 +24,7 @@ export function TasksView() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/tasks')
+      const res = await fetch('/api/tasks', { cache: 'no-store' })
       const json = await res.json()
       setData(json)
       useAuthStore.getState().updateUser({ balance: json.balance })

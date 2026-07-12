@@ -32,7 +32,7 @@ export function DepositView() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/deposit')
+      const res = await fetch('/api/deposit', { cache: 'no-store' })
       const json = await res.json()
       setData(json)
       if (json.wallets.length > 0 && !selectedNetwork) {
