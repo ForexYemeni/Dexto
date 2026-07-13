@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
-import { useAuthStore } from '@/lib/store'
+import { useAuthStore, useUIStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Pickaxe, Clock, TrendingUp, Zap, Award, Gem, Crown, Diamond,
-  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles,
+  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles, ArrowDownToLine,
 } from 'lucide-react'
 import { formatCurrency, formatMeccaTime } from '@/lib/time-utils'
 import { useToast } from '@/hooks/use-toast'
@@ -21,6 +21,7 @@ interface MiningData {
 export function MiningView() {
   const { t, locale, isRTL } = useI18n()
   const { user } = useAuthStore()
+  const setView = useUIStore((s) => s.setView)
   const { toast } = useToast()
   const [data, setData] = useState<MiningData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -234,7 +235,7 @@ export function MiningView() {
                     </div>
                   </div>
 
-                  {/* Start button */}
+                  {/* Subscribe button */}
                   <button
                     onClick={() => openStartModal(plan)}
                     disabled={isActive || !plan.isActive}
@@ -248,15 +249,41 @@ export function MiningView() {
                     {isActive ? (
                       <>
                         <Timer className="w-4 h-4" />
-                        {locale === 'ar' ? 'قيد التشغيل' : 'In Progress'}
+                        {locale === 'ar' ? 'مشترك بالفعل' : 'Subscribed'}
+                      </>
+                    ) : !plan.isActive ? (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        {locale === 'ar' ? 'غير متاحة' : 'Unavailable'}
                       </>
                     ) : (
                       <>
-                        <Play className="w-4 h-4" />
-                        {t('startMining')}
+                        <Sparkles className="w-4 h-4" />
+                        {locale === 'ar' ? 'اشترك في الخطة' : 'Subscribe to Plan'}
                       </>
                     )}
                   </button>
+                  {/* Show balance status */}
+                  {!isActive && plan.isActive && (
+                    <div className="mt-2 text-center">
+                      {data.balance >= plan.minInvestment ? (
+                        <p className="text-[10px] text-green-400">
+                          {locale === 'ar'
+                            ? `رصيدك: ${formatCurrency(data.balance, locale)} USDT ✓`
+                            : `Balance: ${formatCurrency(data.balance, locale)} USDT ✓`}
+                        </p>
+                      ) : (
+                        <button
+                          onClick={() => setView('deposit')}
+                          className="text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                        >
+                          {locale === 'ar'
+                            ? `رصيدك ${formatCurrency(data.balance, locale)} USDT - اضغط للإيداع`
+                            : `Balance ${formatCurrency(data.balance, locale)} USDT - Click to deposit`}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )
@@ -344,10 +371,29 @@ export function MiningView() {
                 {/* Balance */}
                 <div className="glass rounded-xl p-3 flex items-center justify-between">
                   <span className="text-xs text-white/60">{t('availableBalance')}</span>
-                  <span className="text-sm font-bold text-white tabular-nums">
+                  <span className={`text-sm font-bold tabular-nums ${(user?.balance ?? 0) < selectedPlan.minInvestment ? 'text-amber-400' : 'text-green-400'}`}>
                     {formatCurrency(user?.balance ?? 0, locale)} USDT
                   </span>
                 </div>
+
+                {/* Insufficient balance warning */}
+                {(user?.balance ?? 0) < selectedPlan.minInvestment && (
+                  <div className="glass rounded-xl p-4 bg-amber-500/10 border border-amber-500/30">
+                    <p className="text-xs text-amber-400 mb-3 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      {locale === 'ar'
+                        ? `رصيدك غير كافٍ. تحتاج ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT إضافية`
+                        : `Insufficient balance. Need ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT more`}
+                    </p>
+                    <button
+                      onClick={() => { setShowModal(false); setView('deposit') }}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                    >
+                      <ArrowDownToLine className="w-4 h-4" />
+                      {locale === 'ar' ? 'اذهب للإيداع' : 'Go to Deposit'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Investment amount input */}
                 <div>
