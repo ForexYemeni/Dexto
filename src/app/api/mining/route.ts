@@ -225,8 +225,10 @@ async function subscribePlan(userId: string, planId: string, investmentAmount: n
   })
 }
 
-// ===== ACTIVATE: User activates daily mining (press button each day) =====
-// Mining starts at the admin-set time (e.g., 00:00 Mecca) and runs for 24h
+// ===== ACTIVATE: User activates daily mining =====
+// Mining starts IMMEDIATELY and runs until the next admin-set cycle time
+// Example: admin sets 00:00, user activates at 23:00 → mining runs for 1 hour → profit added at 00:00
+// Then next cycle: user activates again → mining runs until next 00:00 (24h)
 async function activateDailyMining(userId: string, sessionId: string) {
   const session = await db.userMiningSession.findFirst({
     where: { id: sessionId, userId, status: 'active' },
@@ -251,10 +253,10 @@ async function activateDailyMining(userId: string, sessionId: string) {
   const now = new Date()
 
   let endsAt: Date
-  let miningStarted: boolean
 
   if (miningStartTime && miningStartTime.includes(':')) {
-    // Admin set a specific time (e.g., "00:00" = midnight Mecca)
+    // Admin set a specific cycle time (e.g., "00:00" = midnight Mecca)
+    // Mining starts NOW but ends at the next occurrence of that time
     // Convert Mecca time (UTC+3) to UTC
     const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
     let targetUTCHours = targetHours - 3
@@ -264,29 +266,27 @@ async function activateDailyMining(userId: string, sessionId: string) {
       targetDateOffset = -1
     }
 
-    // Find next occurrence of this time
-    const nextStart = new Date(now)
-    nextStart.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
-    nextStart.setUTCDate(nextStart.getUTCDate() + targetDateOffset)
+    // Find next occurrence of the cycle time
+    const nextCycle = new Date(now)
+    nextCycle.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
+    nextCycle.setUTCDate(nextCycle.getUTCDate() + targetDateOffset)
     // If already passed today, use tomorrow
-    if (nextStart <= now) {
-      nextStart.setUTCDate(nextStart.getUTCDate() + 1)
+    if (nextCycle <= now) {
+      nextCycle.setUTCDate(nextCycle.getUTCDate() + 1)
     }
 
-    // Mining will end 24h after it starts
-    endsAt = new Date(nextStart.getTime() + session.plan.durationHours * 60 * 60 * 1000)
-    miningStarted = false // waiting for the start time
+    // endsAt = next cycle time (mining runs from NOW until next cycle)
+    endsAt = nextCycle
   } else {
-    // No admin time: mining starts immediately for 24h
+    // No admin time: mining runs 24h from activation
     endsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
-    miningStarted = true
   }
 
-  // Update session
+  // Activate mining - starts IMMEDIATELY
   await db.userMiningSession.update({
     where: { id: sessionId },
     data: {
-      miningStarted,
+      miningStarted: true,    // mining starts NOW
       activatedAt: now,
       endsAt,
     },
