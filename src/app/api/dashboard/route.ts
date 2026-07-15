@@ -126,6 +126,7 @@ export async function GET(req: NextRequest) {
       endsAt: s.endsAt.toISOString(),
       planEndsAt: s.planEndsAt?.toISOString() || null,
       miningStarted: s.miningStarted ?? true,
+      activatedAt: s.activatedAt?.toISOString() || null,
       status: s.status,
     })),
     recentTransactions: recentTransactions.map((t) => ({
@@ -167,12 +168,51 @@ export async function GET(req: NextRequest) {
 // - After last day: return capital + last profit, mark as completed
 export async function processCompletedMining(userId: string) {
   const now = new Date()
+
+  // Step 1: Auto-start mining for sessions that were activated but waiting for admin-set time
+  // These sessions have miningStarted=false but activatedAt is set and endsAt is in the future
+  // When current time passes the "start time" (encoded in endsAt - 24h), we set miningStarted=true
+  const waitingSessions = await db.userMiningSession.findMany({
+    where: {
+      userId,
+      status: 'active',
+      miningStarted: false,
+      activatedAt: { not: null },  // user activated but waiting for start time
+    },
+    include: { plan: true },
+  })
+
+  for (const ws of waitingSessions) {
+    // endsAt = miningEnd (start time + 24h)
+    // mining should start at endsAt - 24h
+    const miningStartTime = new Date(ws.endsAt.getTime() - ws.plan.durationHours * 60 * 60 * 1000)
+    if (now >= miningStartTime) {
+      // Time has arrived - start mining
+      await db.userMiningSession.update({
+        where: { id: ws.id },
+        data: { miningStarted: true },
+      })
+
+      await db.notification.create({
+        data: {
+          userId,
+          type: 'mining',
+          title: `Mining Started - Day ${ws.currentDay + 1}/${ws.totalDays}`,
+          titleAr: `بدأ التعدين - اليوم ${ws.currentDay + 1}/${ws.totalDays}`,
+          message: `Mining for ${ws.plan.name} started. You'll earn ${ws.dailyProfit.toFixed(2)} USDT in 24 hours.`,
+          messageAr: `بدأ التعدين لخطة ${ws.plan.nameAr}. ستربح ${ws.dailyProfit.toFixed(2)} USDT خلال 24 ساعة.`,
+        },
+      })
+    }
+  }
+
+  // Step 2: Process completed mining cycles (miningStarted=true AND endsAt passed)
   const completedCycles = await db.userMiningSession.findMany({
     where: {
       userId,
       status: 'active',
-      miningStarted: true,    // only process sessions where mining was activated
-      endsAt: { lte: now },   // and the 24h cycle has ended
+      miningStarted: true,
+      endsAt: { lte: now },
     },
     include: { plan: true },
   })

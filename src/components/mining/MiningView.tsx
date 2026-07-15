@@ -573,19 +573,21 @@ function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: (
           <span className={`text-[10px] px-2 py-1 rounded-full flex items-center gap-1 ${
             isMiningStarted
               ? 'bg-green-500/20 text-green-400'
-              : 'bg-amber-500/20 text-amber-400'
+              : (session.activatedAt ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400')
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-              isMiningStarted ? 'bg-green-400' : 'bg-amber-400'
+              isMiningStarted ? 'bg-green-400' : (session.activatedAt ? 'bg-blue-400' : 'bg-amber-400')
             }`} />
             {isMiningStarted
               ? (locale === 'ar' ? 'يعمل' : 'Mining')
-              : (locale === 'ar' ? 'بانتظار التفعيل' : 'Needs Activation')}
+              : (session.activatedAt
+                ? (locale === 'ar' ? 'بانتظار وقت البدء' : 'Waiting for Start Time')
+                : (locale === 'ar' ? 'بانتظار التفعيل' : 'Needs Activation'))}
           </span>
         </div>
 
-        {/* Activate Mining Button - shows when miningStarted=false */}
-        {!isMiningStarted && currentDay < totalDays && (
+        {/* Activate Mining Button - shows when miningStarted=false AND not activated yet */}
+        {!isMiningStarted && !session.activatedAt && currentDay < totalDays && (
           <button
             onClick={onActivate}
             className="w-full py-3 mb-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 animate-pulse-glow"
@@ -593,6 +595,17 @@ function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: (
             <Zap className="w-4 h-4" />
             {locale === 'ar' ? `تفعيل التعدين - اليوم ${currentDay + 1}` : `Activate Mining - Day ${currentDay + 1}`}
           </button>
+        )}
+
+        {/* Waiting message - when activated but waiting for admin-set time */}
+        {!isMiningStarted && session.activatedAt && currentDay < totalDays && (
+          <div className="w-full py-3 mb-4 rounded-xl bg-blue-500/10 border border-blue-500/30 text-center">
+            <p className="text-xs text-blue-400">
+              {locale === 'ar'
+                ? '⏳ تم التفعيل - يبدأ التعدين في الوقت المحدد من الإدارة'
+                : '⏳ Activated - Mining will start at the admin-set time'}
+            </p>
+          </div>
         )}
 
         {/* Days Progress - NEW */}
@@ -624,8 +637,9 @@ function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: (
           </div>
         </div>
 
-        {/* Countdown - only show when mining is active */}
+        {/* Countdown */}
         {isMiningStarted ? (
+          // Mining in progress - show remaining time
           <div className="text-center mb-4">
             <p className="text-[10px] text-white/40 mb-1">
               {locale === 'ar' ? 'الوقت المتبقي للتعدين' : 'Mining Time Remaining'}
@@ -634,7 +648,29 @@ function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: (
               {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
             </p>
           </div>
+        ) : session.activatedAt ? (
+          // Activated but waiting for admin-set time - show countdown to start
+          (() => {
+            // Calculate time until mining starts (endsAt - 24h = start time)
+            const durationMs = session.plan?.durationHours ? session.plan.durationHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+            const startAt = end - durationMs
+            const waitRemaining = Math.max(0, startAt - now)
+            const waitHours = Math.floor(waitRemaining / 3600000)
+            const waitMinutes = Math.floor((waitRemaining % 3600000) / 60000)
+            const waitSeconds = Math.floor((waitRemaining % 60000) / 1000)
+            return (
+              <div className="text-center mb-4">
+                <p className="text-[10px] text-blue-400 mb-1">
+                  {locale === 'ar' ? 'الوقت المتبقي لبدء التعدين' : 'Time Until Mining Starts'}
+                </p>
+                <p className="text-3xl font-bold text-blue-400 tabular-nums">
+                  {waitHours.toString().padStart(2, '0')}:{waitMinutes.toString().padStart(2, '0')}:{waitSeconds.toString().padStart(2, '0')}
+                </p>
+              </div>
+            )
+          })()
         ) : (
+          // Not activated - show message
           <div className="text-center mb-4 p-4 glass rounded-xl bg-amber-500/5 border border-amber-500/20">
             <p className="text-xs text-amber-400 font-medium">
               {locale === 'ar'

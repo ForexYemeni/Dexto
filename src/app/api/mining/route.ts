@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
       endsAt: s.endsAt.toISOString(),
       planEndsAt: s.planEndsAt?.toISOString() || null,
       miningStarted: s.miningStarted ?? true,
+      activatedAt: s.activatedAt?.toISOString() || null,
       status: s.status,
     })),
     history: history.map((h) => ({
@@ -225,6 +226,7 @@ async function subscribePlan(userId: string, planId: string, investmentAmount: n
 }
 
 // ===== ACTIVATE: User activates daily mining (press button each day) =====
+// Mining starts at the admin-set time (e.g., 00:00 Mecca) and runs for 24h
 async function activateDailyMining(userId: string, sessionId: string) {
   const session = await db.userMiningSession.findFirst({
     where: { id: sessionId, userId, status: 'active' },
@@ -239,7 +241,6 @@ async function activateDailyMining(userId: string, sessionId: string) {
     return NextResponse.json({ error: 'already_mining' }, { status: 400 })
   }
 
-  // Check if plan is complete
   if (session.currentDay >= session.totalDays) {
     return NextResponse.json({ error: 'plan_completed' }, { status: 400 })
   }
@@ -247,25 +248,45 @@ async function activateDailyMining(userId: string, sessionId: string) {
   // Get admin-set mining start time
   const settings = await db.systemSetting.findFirst()
   const miningStartTime = settings?.miningStartTime || ''
-
   const now = new Date()
+
   let endsAt: Date
+  let miningStarted: boolean
 
   if (miningStartTime && miningStartTime.includes(':')) {
-    // Admin set specific time: mining runs until next occurrence of that time + 24h
-    // But since user activates manually, we just run 24h from now
-    // The admin time is for the WAITING phase alignment (already handled)
-    endsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+    // Admin set a specific time (e.g., "00:00" = midnight Mecca)
+    // Convert Mecca time (UTC+3) to UTC
+    const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
+    let targetUTCHours = targetHours - 3
+    let targetDateOffset = 0
+    if (targetUTCHours < 0) {
+      targetUTCHours += 24
+      targetDateOffset = -1
+    }
+
+    // Find next occurrence of this time
+    const nextStart = new Date(now)
+    nextStart.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
+    nextStart.setUTCDate(nextStart.getUTCDate() + targetDateOffset)
+    // If already passed today, use tomorrow
+    if (nextStart <= now) {
+      nextStart.setUTCDate(nextStart.getUTCDate() + 1)
+    }
+
+    // Mining will end 24h after it starts
+    endsAt = new Date(nextStart.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+    miningStarted = false // waiting for the start time
   } else {
-    // No admin time: mining runs 24h from activation
+    // No admin time: mining starts immediately for 24h
     endsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+    miningStarted = true
   }
 
-  // Activate mining
+  // Update session
   await db.userMiningSession.update({
     where: { id: sessionId },
     data: {
-      miningStarted: true,
+      miningStarted,
       activatedAt: now,
       endsAt,
     },

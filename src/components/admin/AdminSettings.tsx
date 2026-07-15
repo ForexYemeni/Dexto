@@ -164,18 +164,43 @@ export function AdminSettings() {
         <SettingField label={`${t('dailyProfitRate')} (default %)`} type="number" value={(settings.globalMiningProfitRate * 100).toString()} onChange={(v) => update('globalMiningProfitRate', Number(v) / 100)} />
         <div>
           <label className="text-xs text-white/60 mb-1.5 block">
-            {locale === 'ar' ? 'وقت بداية التعدين (توقيت مكة) - اتركه فارغاً للبدء فوراً' : 'Mining Start Time (Mecca time) - leave empty for immediate'}
+            {locale === 'ar' ? 'وقت بداية التعدين (توقيت مكة)' : 'Mining Start Time (Mecca time)'}
           </label>
-          <input
-            type="time"
-            value={settings.miningStartTime || ''}
-            onChange={(e) => update('miningStartTime', e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
-          />
+          <div className="flex gap-2">
+            <select
+              value={settings.miningStartTime ? settings.miningStartTime.split(':')[0] : ''}
+              onChange={(e) => {
+                const hours = e.target.value
+                const mins = settings.miningStartTime ? settings.miningStartTime.split(':')[1] || '00' : '00'
+                update('miningStartTime', hours ? `${hours}:${mins}` : '')
+              }}
+              className="bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+            >
+              <option value="" className="bg-slate-900">{locale === 'ar' ? 'فوري (بدون انتظار)' : 'Immediate (no wait)'}</option>
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={i.toString().padStart(2, '0')} className="bg-slate-900">
+                  {i.toString().padStart(2, '0')}:00
+                </option>
+              ))}
+            </select>
+            <select
+              value={settings.miningStartTime ? settings.miningStartTime.split(':')[1] || '00' : '00'}
+              onChange={(e) => {
+                const hours = settings.miningStartTime ? settings.miningStartTime.split(':')[0] || '00' : '00'
+                update('miningStartTime', `${hours}:${e.target.value}`)
+              }}
+              disabled={!settings.miningStartTime}
+              className="bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50 disabled:opacity-30"
+            >
+              {['00', '15', '30', '45'].map((m) => (
+                <option key={m} value={m} className="bg-slate-900">{m}</option>
+              ))}
+            </select>
+          </div>
           <p className="text-[10px] text-white/40 mt-1">
             {locale === 'ar'
-              ? 'مثال: 00:00 = منتصف الليل. عند الشراء، يظهر العد التنازلي حتى هذا الوقت ثم يبدأ التعدين.'
-              : 'Example: 00:00 = midnight. When buying, countdown shows until this time then mining starts.'}
+              ? `الوقت الحالي: ${settings.miningStartTime || 'فوري'} | مثال: 00:00 = منتصف الليل، 12:00 = ظهراً`
+              : `Current: ${settings.miningStartTime || 'immediate'} | Example: 00:00 = midnight, 12:00 = noon`}
           </p>
         </div>
       </SettingsSection>
