@@ -87,10 +87,11 @@ model UserMiningSession {
   expectedProfit  Float    // daily profit (per 24h cycle)
   dailyProfit     Float    // profit per day
   totalDays       Int      @default(7)   // total days for this session
-  currentDay      Int      @default(0)   // current day completed (0 = first day in progress)
-  miningStarted   Boolean  @default(false) // false = waiting for cycle start, true = mining in progress
+  currentDay      Int      @default(0)   // number of days ACTIVATED by user (completed cycles)
+  miningStarted   Boolean  @default(false) // false = needs user activation, true = mining in progress
+  activatedAt     DateTime? // when user activated mining this cycle (null = not activated yet)
   startedAt       DateTime
-  endsAt          DateTime  // end of current phase (waiting countdown OR mining countdown)
+  endsAt          DateTime  // end of current mining cycle (only valid when miningStarted=true)
   planEndsAt      DateTime? // end of entire plan (when capital is returned)
   status          String   @default("active") // active | completed | cancelled
   completedAt     DateTime?

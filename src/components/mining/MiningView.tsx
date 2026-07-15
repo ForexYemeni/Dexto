@@ -82,7 +82,7 @@ export function MiningView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'start',
+          action: 'subscribe',
           planId: selectedPlan.id,
           investmentAmount,
         }),
@@ -91,7 +91,7 @@ export function MiningView() {
       if (!res.ok) {
         const errMap: Record<string, string> = {
           insufficient_balance: t('insufficientBalance'),
-          already_active_for_plan: locale === 'ar' ? 'يوجد تعدين نشط لهذه الخطة' : 'Already mining this plan',
+          already_active_for_plan: locale === 'ar' ? 'مشترك بالفعل في هذه الخطة' : 'Already subscribed to this plan',
           invalid_amount: t('error'),
           plan_not_available: locale === 'ar' ? 'الخطة غير متاحة' : 'Plan not available',
         }
@@ -104,8 +104,10 @@ export function MiningView() {
       }
       toast({
         variant: 'success',
-        title: '✅ ' + t('miningStarted'),
-        description: `${t('expectedProfit')}: ${formatCurrency(data.session.expectedProfit, locale)} USDT`,
+        title: '✅ ' + (locale === 'ar' ? 'تم الاشتراك بنجاح!' : 'Subscribed successfully!'),
+        description: locale === 'ar'
+          ? `فعّل التعدين يومياً لربح ${formatCurrency(data.session.dailyProfit, locale)} USDT/يوم`
+          : `Activate mining daily to earn ${formatCurrency(data.session.dailyProfit, locale)} USDT/day`,
       })
       setShowModal(false)
       fetchData()
@@ -113,6 +115,39 @@ export function MiningView() {
       toast({ variant: 'destructive', title: '❌ ' + t('error'), description: t('error') })
     } finally {
       setStartingPlan(null)
+    }
+  }
+
+  // Activate daily mining
+  const handleActivateMining = async (sessionId: string) => {
+    try {
+      const res = await fetch('/api/mining', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate', sessionId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          already_mining: locale === 'ar' ? 'التعدين مفعّل بالفعل' : 'Mining already activated',
+          plan_completed: locale === 'ar' ? 'اكتملت الخطة' : 'Plan completed',
+          session_not_found: locale === 'ar' ? 'الجلسة غير موجودة' : 'Session not found',
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + (locale === 'ar' ? 'تم تفعيل التعدين!' : 'Mining activated!'),
+        description: locale === 'ar' ? 'بدأ التعدين لمدة 24 ساعة' : 'Mining started for 24 hours',
+      })
+      fetchData()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
     }
   }
 
@@ -150,6 +185,7 @@ export function MiningView() {
               <ActiveMiningCard
                 key={session.id}
                 session={session}
+                onActivate={() => handleActivateMining(session.id)}
               />
             ))}
           </div>
@@ -459,7 +495,7 @@ export function MiningView() {
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4" />
-                        {t('startMining')}
+                        {locale === 'ar' ? 'اشترك في الخطة' : 'Subscribe to Plan'}
                       </>
                     )}
                   </button>
@@ -473,7 +509,7 @@ export function MiningView() {
   )
 }
 
-function ActiveMiningCard({ session }: { session: any }) {
+function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: () => void }) {
   const { t, locale, isRTL } = useI18n()
   const [now, setNow] = useState(Date.now())
 
@@ -534,11 +570,30 @@ function ActiveMiningCard({ session }: { session: any }) {
               </p>
             </div>
           </div>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            {locale === 'ar' ? 'نشط' : 'Active'}
+          <span className={`text-[10px] px-2 py-1 rounded-full flex items-center gap-1 ${
+            isMiningStarted
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-amber-500/20 text-amber-400'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+              isMiningStarted ? 'bg-green-400' : 'bg-amber-400'
+            }`} />
+            {isMiningStarted
+              ? (locale === 'ar' ? 'يعمل' : 'Mining')
+              : (locale === 'ar' ? 'بانتظار التفعيل' : 'Needs Activation')}
           </span>
         </div>
+
+        {/* Activate Mining Button - shows when miningStarted=false */}
+        {!isMiningStarted && currentDay < totalDays && (
+          <button
+            onClick={onActivate}
+            className="w-full py-3 mb-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 animate-pulse-glow"
+          >
+            <Zap className="w-4 h-4" />
+            {locale === 'ar' ? `تفعيل التعدين - اليوم ${currentDay + 1}` : `Activate Mining - Day ${currentDay + 1}`}
+          </button>
+        )}
 
         {/* Days Progress - NEW */}
         <div className="glass rounded-xl p-3 mb-4 bg-gradient-to-r from-blue-500/10 to-purple-500/5 border border-blue-500/20">
@@ -569,36 +624,41 @@ function ActiveMiningCard({ session }: { session: any }) {
           </div>
         </div>
 
-        {/* Countdown - waiting or mining */}
-        <div className="text-center mb-4">
-          <p className="text-[10px] text-white/40 mb-1">
-            {isMiningStarted
-              ? (locale === 'ar' ? 'الوقت المتبقي للتعدين' : 'Mining Time Remaining')
-              : (locale === 'ar' ? 'الوقت المتبقي لبدء التعدين' : 'Time Until Mining Starts')}
-          </p>
-          <p className="text-3xl font-bold gradient-text-electric tabular-nums">
-            {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
-          </p>
-          {!isMiningStarted && (
-            <span className="inline-block mt-2 text-[10px] px-3 py-1 rounded-full bg-amber-500/20 text-amber-400">
-              {locale === 'ar' ? '⏳ في انتظار بدء دورة التعدين' : '⏳ Waiting for mining cycle to start'}
-            </span>
-          )}
-        </div>
+        {/* Countdown - only show when mining is active */}
+        {isMiningStarted ? (
+          <div className="text-center mb-4">
+            <p className="text-[10px] text-white/40 mb-1">
+              {locale === 'ar' ? 'الوقت المتبقي للتعدين' : 'Mining Time Remaining'}
+            </p>
+            <p className="text-3xl font-bold gradient-text-electric tabular-nums">
+              {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
+            </p>
+          </div>
+        ) : (
+          <div className="text-center mb-4 p-4 glass rounded-xl bg-amber-500/5 border border-amber-500/20">
+            <p className="text-xs text-amber-400 font-medium">
+              {locale === 'ar'
+                ? '🔒 التعدين متوقف - اضغط "تفعيل التعدين" بالأعلى لبدء دورة اليوم'
+                : '🔒 Mining stopped - Click "Activate Mining" above to start today\'s cycle'}
+            </p>
+          </div>
+        )}
 
-        {/* Progress bar - current cycle */}
-        <div className="mb-4">
-          <div className="flex justify-between text-[10px] text-white/40 mb-1.5">
-            <span>{locale === 'ar' ? 'تقدم اليوم' : 'Today Progress'}</span>
-            <span>{progress.toFixed(1)}%</span>
+        {/* Progress bar - only when mining */}
+        {isMiningStarted && (
+          <div className="mb-4">
+            <div className="flex justify-between text-[10px] text-white/40 mb-1.5">
+              <span>{locale === 'ar' ? 'تقدم اليوم' : 'Today Progress'}</span>
+              <span>{progress.toFixed(1)}%</span>
+            </div>
+            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+              <div
+                className="h-full mining-progress transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full mining-progress transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Daily profit + Total profit */}
         <div className="grid grid-cols-2 gap-2 mb-4">

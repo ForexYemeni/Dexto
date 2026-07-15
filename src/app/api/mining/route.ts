@@ -99,16 +99,19 @@ export async function POST(req: NextRequest) {
   await processCompletedMining(payload.userId)
 
   const body = await req.json()
-  const { action, planId, investmentAmount } = body
+  const { action, planId, investmentAmount, sessionId } = body
 
-  if (action === 'start') {
-    return startMining(payload.userId, planId, investmentAmount)
+  if (action === 'subscribe') {
+    return subscribePlan(payload.userId, planId, investmentAmount)
+  } else if (action === 'activate') {
+    return activateDailyMining(payload.userId, sessionId)
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 })
 }
 
-async function startMining(userId: string, planId: string, investmentAmount: number) {
+// ===== SUBSCRIBE: User buys a plan (locks capital, creates session) =====
+async function subscribePlan(userId: string, planId: string, investmentAmount: number) {
   const plan = await db.miningPlan.findUnique({ where: { id: planId } })
   if (!plan || !plan.isActive) {
     return NextResponse.json({ error: 'plan_not_available' }, { status: 400 })
@@ -135,52 +138,11 @@ async function startMining(userId: string, planId: string, investmentAmount: num
     return NextResponse.json({ error: 'already_active_for_plan' }, { status: 400 })
   }
 
-  // Calculate daily profit (per 24h cycle)
   const dailyProfit = investmentAmount * plan.dailyProfitRate
   const totalDays = plan.totalDays || 7
-
-  // Get admin-set mining start time
-  const settings = await db.systemSetting.findFirst()
-  const miningStartTime = settings?.miningStartTime || '' // e.g., "00:00"
-
   const startedAt = new Date()
-
-  let endsAt: Date
-  let miningStarted: boolean
-
-  if (miningStartTime && miningStartTime.includes(':')) {
-    // Admin has set a specific mining start time (in Mecca timezone = UTC+3)
-    const [targetHours, targetMinutes] = miningStartTime.split(':').map(Number)
-    const now = new Date()
-
-    // Convert target time from Mecca (UTC+3) to UTC
-    // Mecca is UTC+3, so if target is 00:00 Mecca = 21:00 UTC previous day
-    let targetUTCHours = targetHours - 3
-    let targetDateOffset = 0
-    if (targetUTCHours < 0) {
-      targetUTCHours += 24
-      targetDateOffset = -1 // previous day in UTC
-    }
-
-    // Create date for today at the specified UTC time
-    const todayTarget = new Date(now)
-    todayTarget.setUTCHours(targetUTCHours, targetMinutes, 0, 0)
-    todayTarget.setUTCDate(todayTarget.getUTCDate() + targetDateOffset)
-
-    // If the target time has already passed, use tomorrow
-    if (todayTarget <= now) {
-      todayTarget.setUTCDate(todayTarget.getUTCDate() + 1)
-    }
-
-    endsAt = todayTarget
-    miningStarted = false
-  } else {
-    // No admin-set time: mining starts immediately (backward compatible)
-    endsAt = new Date(startedAt.getTime() + plan.durationHours * 60 * 60 * 1000)
-    miningStarted = true // mining in progress immediately
-  }
-
-  const planEndsAt = new Date(startedAt.getTime() + (totalDays + 1) * 24 * 60 * 60 * 1000)
+  // endsAt = startedAt (placeholder, will be set when user activates)
+  const endsAt = new Date(startedAt)
 
   // Deduct investment (capital) from balance - CAPITAL IS LOCKED
   await db.user.update({
@@ -191,7 +153,7 @@ async function startMining(userId: string, planId: string, investmentAmount: num
     },
   })
 
-  // Create mining session with multi-day support
+  // Create mining session - needs daily activation
   const session = await db.userMiningSession.create({
     data: {
       userId,
@@ -201,15 +163,14 @@ async function startMining(userId: string, planId: string, investmentAmount: num
       dailyProfit,
       totalDays,
       currentDay: 0,
-      miningStarted,
+      miningStarted: false, // needs user to activate
+      activatedAt: null,
       startedAt,
       endsAt,
-      planEndsAt,
       status: 'active',
     },
   })
 
-  // Record transaction - capital locked
   await db.transaction.create({
     data: {
       userId,
@@ -224,7 +185,7 @@ async function startMining(userId: string, planId: string, investmentAmount: num
   await db.activityLog.create({
     data: {
       userId,
-      action: 'mining_start',
+      action: 'mining_subscribe',
       details: `Plan: ${plan.name}, Amount: ${investmentAmount} USDT`,
     },
   })
@@ -233,21 +194,20 @@ async function startMining(userId: string, planId: string, investmentAmount: num
     data: {
       userId,
       type: 'mining',
-      title: 'Mining Started!',
-      titleAr: 'بدأ التعدين!',
-      message: `Your mining for ${plan.name} has started. Expected profit: ${expectedProfit.toFixed(2)} USDT`,
-      messageAr: `بدأ التعدين لخطة ${plan.nameAr}. الأرباح المتوقعة: ${expectedProfit.toFixed(2)} USDT`,
+      title: 'Subscription Active!',
+      titleAr: 'تم الاشتراك بنجاح!',
+      message: `You subscribed to ${plan.name}. Activate mining daily to earn ${dailyProfit.toFixed(2)} USDT/day for ${totalDays} days.`,
+      messageAr: `اشتركت في خطة ${plan.nameAr}. فعّل التعدين يومياً لربح ${dailyProfit.toFixed(2)} USDT/يوم لمدة ${totalDays} أيام.`,
     },
   })
 
-  // Notify all admins about new mining start
   const miningUser = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
   await notifyAdmins({
     type: 'mining',
-    title: 'New Mining Started',
-    titleAr: 'بدء تعدين جديد',
-    message: `${miningUser?.name || 'User'} started mining ${plan.name} with ${investmentAmount} USDT (daily: ${dailyProfit.toFixed(2)} USDT, ${totalDays} days)`,
-    messageAr: `${miningUser?.name || 'مستخدم'} بدأ التعدين ${plan.nameAr} بمبلغ ${investmentAmount} USDT (يومي: ${dailyProfit.toFixed(2)} USDT، ${totalDays} أيام)`,
+    title: 'New Subscription',
+    titleAr: 'اشتراك جديد',
+    message: `${miningUser?.name || 'User'} subscribed to ${plan.name} with ${investmentAmount} USDT`,
+    messageAr: `${miningUser?.name || 'مستخدم'} اشترك في ${plan.nameAr} بمبلغ ${investmentAmount} USDT`,
   })
 
   return NextResponse.json({
@@ -256,11 +216,83 @@ async function startMining(userId: string, planId: string, investmentAmount: num
       id: session.id,
       planId: session.planId,
       investmentAmount: session.investmentAmount,
-      expectedProfit: session.expectedProfit,
-      startedAt: session.startedAt.toISOString(),
-      endsAt: session.endsAt.toISOString(),
+      dailyProfit: session.dailyProfit,
+      totalDays: session.totalDays,
+      miningStarted: session.miningStarted,
       status: session.status,
     },
+  })
+}
+
+// ===== ACTIVATE: User activates daily mining (press button each day) =====
+async function activateDailyMining(userId: string, sessionId: string) {
+  const session = await db.userMiningSession.findFirst({
+    where: { id: sessionId, userId, status: 'active' },
+    include: { plan: true },
+  })
+
+  if (!session) {
+    return NextResponse.json({ error: 'session_not_found' }, { status: 404 })
+  }
+
+  if (session.miningStarted) {
+    return NextResponse.json({ error: 'already_mining' }, { status: 400 })
+  }
+
+  // Check if plan is complete
+  if (session.currentDay >= session.totalDays) {
+    return NextResponse.json({ error: 'plan_completed' }, { status: 400 })
+  }
+
+  // Get admin-set mining start time
+  const settings = await db.systemSetting.findFirst()
+  const miningStartTime = settings?.miningStartTime || ''
+
+  const now = new Date()
+  let endsAt: Date
+
+  if (miningStartTime && miningStartTime.includes(':')) {
+    // Admin set specific time: mining runs until next occurrence of that time + 24h
+    // But since user activates manually, we just run 24h from now
+    // The admin time is for the WAITING phase alignment (already handled)
+    endsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+  } else {
+    // No admin time: mining runs 24h from activation
+    endsAt = new Date(now.getTime() + session.plan.durationHours * 60 * 60 * 1000)
+  }
+
+  // Activate mining
+  await db.userMiningSession.update({
+    where: { id: sessionId },
+    data: {
+      miningStarted: true,
+      activatedAt: now,
+      endsAt,
+    },
+  })
+
+  await db.activityLog.create({
+    data: {
+      userId,
+      action: 'mining_activated',
+      details: `Day ${session.currentDay + 1}/${session.totalDays} - ${session.plan.name}`,
+    },
+  })
+
+  await db.notification.create({
+    data: {
+      userId,
+      type: 'mining',
+      title: `Mining Activated - Day ${session.currentDay + 1}/${session.totalDays}`,
+      titleAr: `تم تفعيل التعدين - اليوم ${session.currentDay + 1}/${session.totalDays}`,
+      message: `Mining started for ${session.plan.name}. You'll earn ${session.dailyProfit.toFixed(2)} USDT in 24 hours.`,
+      messageAr: `بدأ التعدين لخطة ${session.plan.nameAr}. ستربح ${session.dailyProfit.toFixed(2)} USDT خلال 24 ساعة.`,
+    },
+  })
+
+  return NextResponse.json({
+    success: true,
+    endsAt: endsAt.toISOString(),
   })
 }
 
