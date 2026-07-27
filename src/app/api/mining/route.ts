@@ -45,11 +45,10 @@ export async function GET(req: NextRequest) {
       nameAr: p.nameAr,
       description: p.description,
       descriptionAr: p.descriptionAr,
-      price: p.price,
+      fixedAmount: p.fixedAmount || 50,
       dailyProfitRate: p.dailyProfitRate,
       durationHours: p.durationHours,
-      minInvestment: p.minInvestment,
-      maxInvestment: p.maxInvestment,
+      minWithdrawal: p.minWithdrawal || 10,
       color: p.color,
       icon: p.icon,
       isActive: p.isActive,
@@ -103,7 +102,7 @@ export async function POST(req: NextRequest) {
   const { action, planId, investmentAmount, sessionId } = body
 
   if (action === 'subscribe') {
-    return subscribePlan(payload.userId, planId, investmentAmount)
+    return subscribePlan(payload.userId, planId)
   } else if (action === 'activate') {
     return activateDailyMining(payload.userId, sessionId)
   }
@@ -112,15 +111,14 @@ export async function POST(req: NextRequest) {
 }
 
 // ===== SUBSCRIBE: User buys a plan (locks capital, creates session) =====
-async function subscribePlan(userId: string, planId: string, investmentAmount: number) {
+async function subscribePlan(userId: string, planId: string) {
   const plan = await db.miningPlan.findUnique({ where: { id: planId } })
   if (!plan || !plan.isActive) {
     return NextResponse.json({ error: 'plan_not_available' }, { status: 400 })
   }
 
-  if (investmentAmount < plan.minInvestment || investmentAmount > plan.maxInvestment) {
-    return NextResponse.json({ error: 'invalid_amount' }, { status: 400 })
-  }
+  // Use FIXED amount from plan
+  const investmentAmount = plan.fixedAmount || 50
 
   const user = await db.user.findUnique({ where: { id: userId } })
   if (!user) {

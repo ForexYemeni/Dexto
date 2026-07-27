@@ -22,6 +22,13 @@ export async function GET(req: NextRequest) {
   const settings = await db.systemSetting.findFirst()
   const user = await db.user.findUnique({ where: { id: payload.userId } })
 
+  // Get user's active plan minWithdrawal
+  const activeSession = await db.userMiningSession.findFirst({
+    where: { userId: payload.userId, status: 'active' },
+    include: { plan: true },
+  })
+  const planMinWithdrawal = activeSession?.plan?.minWithdrawal || null
+
   return NextResponse.json({
     withdrawals: withdrawals.map((w) => ({
       id: w.id,
@@ -35,7 +42,9 @@ export async function GET(req: NextRequest) {
       createdAt: w.createdAt.toISOString(),
       reviewedAt: w.reviewedAt?.toISOString(),
     })),
-    minWithdrawal: settings?.minWithdrawal ?? 10,
+    minWithdrawal: planMinWithdrawal || settings?.minWithdrawal || 10,
+    planMinWithdrawal,
+    globalMinWithdrawal: settings?.minWithdrawal ?? 10,
     withdrawalFee: settings?.withdrawalFee ?? 1,
     withdrawalFeeType: settings?.withdrawalFeeType ?? 'percent',
     balance: user?.balance ?? 0,
@@ -59,10 +68,18 @@ export async function POST(req: NextRequest) {
   }
 
   const settings = await db.systemSetting.findFirst()
-  const minWithdrawal = settings?.minWithdrawal ?? 10
+
+  // Get user's active mining plan to determine minimum withdrawal
+  const activeSession = await db.userMiningSession.findFirst({
+    where: { userId: payload.userId, status: 'active' },
+    include: { plan: true },
+  })
+
+  // Use plan's minWithdrawal if user has active plan, otherwise use global setting
+  const minWithdrawal = activeSession?.plan?.minWithdrawal || settings?.minWithdrawal || 10
 
   if (amount < minWithdrawal) {
-    return NextResponse.json({ error: 'below_minimum' }, { status: 400 })
+    return NextResponse.json({ error: 'below_minimum', minRequired: minWithdrawal }, { status: 400 })
   }
 
   const user = await db.user.findUnique({ where: { id: payload.userId } })

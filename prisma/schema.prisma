@@ -60,12 +60,11 @@ model MiningPlan {
   nameAr          String
   description     String?
   descriptionAr   String?
-  price           Float    // minimum investment in USDT
+  fixedAmount     Float    // FIXED investment amount (not range)
   dailyProfitRate Float    // e.g., 0.02 = 2%
-  durationHours   Int      @default(24)  // hours per cycle (24h)
-  totalDays       Int      @default(7)   // total days the plan runs (capital locked)
-  minInvestment   Float    @default(50)
-  maxInvestment   Float    @default(10000)
+  durationHours   Int      @default(24)
+  totalDays       Int      @default(7)
+  minWithdrawal   Float    @default(10)  // minimum withdrawal for this plan
   color           String   @default("#3B82F6")
   icon            String   @default("gem")
   isActive        Boolean  @default(true)
@@ -355,10 +354,13 @@ model SystemSetting {
   // deposit
   minDeposit      Float    @default(10)
   autoApproveDeposit Boolean @default(false)
-  // referral
-  referralLevel1  Float    @default(0.10)
-  referralLevel2  Float    @default(0.05)
-  referralLevel3  Float    @default(0.02)
+  // first deposit bonus
+  firstDepositBonus     Float   @default(0)   // 0 = no bonus
+  firstDepositBonusType String  @default("percent") // percent | fixed
+  // referral - FIXED amount per deposit (not percentage of profit)
+  referralLevel1Fixed   Float   @default(5)   // L1 gets 5 USDT per referral deposit
+  referralLevel2Fixed   Float   @default(2)   // L2 gets 2 USDT
+  referralLevel3Fixed   Float   @default(1)   // L3 gets 1 USDT
   // support
   supportEmail    String   @default("support@cryptomining.io")
   supportPhone    String   @default("")

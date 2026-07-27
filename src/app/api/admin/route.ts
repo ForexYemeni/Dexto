@@ -230,12 +230,11 @@ async function getPlans() {
       nameAr: p.nameAr,
       description: p.description,
       descriptionAr: p.descriptionAr,
-      price: p.price,
+      fixedAmount: p.fixedAmount || 50,
       dailyProfitRate: p.dailyProfitRate,
       durationHours: p.durationHours,
       totalDays: p.totalDays || 7,
-      minInvestment: p.minInvestment,
-      maxInvestment: p.maxInvestment,
+      minWithdrawal: p.minWithdrawal || 10,
       color: p.color,
       icon: p.icon,
       isActive: p.isActive,
@@ -440,12 +439,11 @@ async function createPlan(body: any) {
       nameAr: planData.nameAr || 'خطة جديدة',
       description: planData.description || null,
       descriptionAr: planData.descriptionAr || null,
-      price: Number(planData.price) || Number(planData.minInvestment) || 50,
+      fixedAmount: Number(planData.fixedAmount) || 50,
       dailyProfitRate: Number(planData.dailyProfitRate) || 0.02,
       durationHours: Number(planData.durationHours) || 24,
       totalDays: Number(planData.totalDays) || 7,
-      minInvestment: Number(planData.minInvestment) || 50,
-      maxInvestment: Number(planData.maxInvestment) || 1000,
+      minWithdrawal: Number(planData.minWithdrawal) || 10,
       color: planData.color || '#3B82F6',
       icon: planData.icon || 'pickaxe',
       isActive: planData.isActive !== undefined ? planData.isActive : true,
@@ -475,11 +473,11 @@ async function updatePlan(body: any) {
     if (data.description !== undefined) updateData.description = data.description
     if (data.descriptionAr !== undefined) updateData.descriptionAr = data.descriptionAr
     if (data.price !== undefined) updateData.price = Number(data.price)
+    if (data.fixedAmount !== undefined) updateData.fixedAmount = Number(data.fixedAmount)
     if (data.dailyProfitRate !== undefined) updateData.dailyProfitRate = Number(data.dailyProfitRate)
     if (data.durationHours !== undefined) updateData.durationHours = Number(data.durationHours)
     if (data.totalDays !== undefined) updateData.totalDays = Number(data.totalDays)
-    if (data.minInvestment !== undefined) updateData.minInvestment = Number(data.minInvestment)
-    if (data.maxInvestment !== undefined) updateData.maxInvestment = Number(data.maxInvestment)
+    if (data.minWithdrawal !== undefined) updateData.minWithdrawal = Number(data.minWithdrawal)
     if (data.color !== undefined) updateData.color = data.color
     if (data.icon !== undefined) updateData.icon = data.icon
     if (data.isActive !== undefined) updateData.isActive = data.isActive
@@ -516,10 +514,38 @@ async function reviewDeposit(depositId: string, status: 'completed' | 'rejected'
       data: { status, reviewedAt: new Date(), reviewedBy: adminId },
     })
     if (status === 'completed') {
+      // Get settings for bonus + referral
+      const settings = await tx.systemSetting.findFirst()
+
+      // Check if this is user's FIRST deposit
+      const previousDeposits = await tx.deposit.count({
+        where: { userId: deposit.userId, status: 'completed', id: { not: depositId } },
+      })
+      const isFirstDeposit = previousDeposits === 0
+
+      let bonusAmount = 0
+      let totalCredit = deposit.amount
+
+      // First deposit bonus
+      if (isFirstDeposit && settings) {
+        const bonusValue = settings.firstDepositBonus || 0
+        if (bonusValue > 0) {
+          if (settings.firstDepositBonusType === 'percent') {
+            bonusAmount = deposit.amount * (bonusValue / 100)
+          } else {
+            bonusAmount = bonusValue
+          }
+          totalCredit += bonusAmount
+        }
+      }
+
+      // Credit user balance (deposit + bonus)
       await tx.user.update({
         where: { id: deposit.userId },
-        data: { balance: { increment: deposit.amount } },
+        data: { balance: { increment: totalCredit } },
       })
+
+      // Record deposit transaction
       await tx.transaction.create({
         data: {
           userId: deposit.userId,
@@ -530,16 +556,93 @@ async function reviewDeposit(depositId: string, status: 'completed' | 'rejected'
           reference: deposit.id,
         },
       })
+
+      // Record bonus transaction
+      if (bonusAmount > 0) {
+        await tx.transaction.create({
+          data: {
+            userId: deposit.userId,
+            type: 'admin_adjustment',
+            amount: bonusAmount,
+            status: 'completed',
+            description: `First deposit bonus (${settings?.firstDepositBonusType === 'percent' ? `${settings.firstDepositBonus}%` : `${settings.firstDepositBonus} USDT`})`,
+            reference: deposit.id,
+          },
+        })
+      }
+
+      // Notification
       await tx.notification.create({
         data: {
           userId: deposit.userId,
           type: 'deposit',
           title: 'Deposit Confirmed!',
           titleAr: 'تم تأكيد الإيداع!',
-          message: `Your deposit of ${deposit.amount} USDT has been confirmed.`,
-          messageAr: `تم تأكيد إيداعك بمبلغ ${deposit.amount} USDT.`,
+          message: `Deposit of ${deposit.amount} USDT confirmed${bonusAmount > 0 ? ` + ${bonusAmount.toFixed(2)} USDT bonus!` : ''}`,
+          messageAr: `تم تأكيد إيداعك بمبلغ ${deposit.amount} USDT${bonusAmount > 0 ? ` + مكافأة ${bonusAmount.toFixed(2)} USDT!` : ''}`,
         },
       })
+
+      // Process FIXED referral commissions on deposit
+      if (settings) {
+        const levels = [
+          { level: 1, amount: settings.referralLevel1Fixed || 0 },
+          { level: 2, amount: settings.referralLevel2Fixed || 0 },
+          { level: 3, amount: settings.referralLevel3Fixed || 0 },
+        ]
+
+        const depositUser = await tx.user.findUnique({ where: { id: deposit.userId } })
+        let currentUser = depositUser
+        for (const { level, amount: commission } of levels) {
+          if (!currentUser?.referredBy || commission <= 0) break
+          const referrer = await tx.user.findFirst({ where: { referralCode: currentUser.referredBy } })
+          if (!referrer) break
+
+          await tx.user.update({
+            where: { id: referrer.id },
+            data: {
+              balance: { increment: commission },
+              referralProfit: { increment: commission },
+            },
+          })
+
+          await tx.referralCommission.create({
+            data: {
+              referrerId: referrer.id,
+              referredUserId: deposit.userId,
+              level,
+              percentage: 0,
+              amount: commission,
+              sourceType: 'deposit',
+              sourceId: deposit.id,
+            },
+          })
+
+          await tx.transaction.create({
+            data: {
+              userId: referrer.id,
+              type: 'referral_commission',
+              amount: commission,
+              status: 'completed',
+              description: `Referral commission L${level} (fixed) from deposit`,
+              reference: deposit.id,
+            },
+          })
+
+          await tx.notification.create({
+            data: {
+              userId: referrer.id,
+              type: 'referral',
+              title: `Referral Bonus L${level}!`,
+              titleAr: `عمولة إحالة المستوى ${level}!`,
+              message: `You earned ${commission.toFixed(2)} USDT from your referral's deposit`,
+              messageAr: `لقد ربحت ${commission.toFixed(2)} USDT من إيداع أحد إحالاتك`,
+            },
+          })
+
+          currentUser = referrer
+        }
+      }
     } else {
       await tx.notification.create({
         data: {
@@ -547,8 +650,8 @@ async function reviewDeposit(depositId: string, status: 'completed' | 'rejected'
           type: 'deposit',
           title: 'Deposit Rejected',
           titleAr: 'تم رفض الإيداع',
-          message: `Your deposit of ${deposit.amount} USDT was rejected. Please contact support.`,
-          messageAr: `تم رفض إيداعك بمبلغ ${deposit.amount} USDT. يرجى التواصل مع الدعم.`,
+          message: `Your deposit of ${deposit.amount} USDT was rejected.`,
+          messageAr: `تم رفض إيداعك بمبلغ ${deposit.amount} USDT.`,
         },
       })
     }
