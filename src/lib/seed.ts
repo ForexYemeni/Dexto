@@ -15,8 +15,16 @@ const NETWORKS = [
   { network: 'TON', networkAr: 'تون', address: 'EQAS_o7wQ2xQ3T5xLb6kM5xKQ6t7yZ8vN9wQ4r5s6t7u8v9' },
 ]
 
-// Mining plans - FIXED amounts + minWithdrawal per plan
+// Mining plans - FIXED amounts + minWithdrawal per plan (10 plans)
 const PLANS = [
+  {
+    name: 'Starter Plan',
+    nameAr: 'خطة المبتدئ',
+    description: 'Fixed 25 USDT, 1.5% daily, 5 days',
+    descriptionAr: 'استثمار ثابت 25 USDT، 1.5% يومياً، 5 أيام',
+    fixedAmount: 25, dailyProfitRate: 0.015, durationHours: 24, totalDays: 5, minWithdrawal: 5,
+    color: '#06B6D4', icon: 'pickaxe', sortOrder: 0,
+  },
   {
     name: 'Basic Plan',
     nameAr: 'الخطة الأساسية',
@@ -72,6 +80,46 @@ const PLANS = [
     color: '#A855F7',
     icon: 'diamond',
     sortOrder: 4,
+  },
+  {
+    name: 'Bronze Plan',
+    nameAr: 'الخطة البرونزية',
+    description: 'Fixed 100 USDT, 2.5% daily, 10 days',
+    descriptionAr: 'استثمار ثابت 100 USDT، 2.5% يومياً، 10 أيام',
+    fixedAmount: 100, dailyProfitRate: 0.025, durationHours: 24, totalDays: 10, minWithdrawal: 15,
+    color: '#CD7F32', icon: 'pickaxe', sortOrder: 5,
+  },
+  {
+    name: 'Platinum Plan',
+    nameAr: 'الخطة البلاتينية',
+    description: 'Fixed 750 USDT, 4.5% daily, 25 days',
+    descriptionAr: 'استثمار ثابت 750 USDT، 4.5% يومياً، 25 يوم',
+    fixedAmount: 750, dailyProfitRate: 0.045, durationHours: 24, totalDays: 25, minWithdrawal: 75,
+    color: '#E5E4E2', icon: 'silver', sortOrder: 6,
+  },
+  {
+    name: 'VIP Plan',
+    nameAr: 'خطة VIP',
+    description: 'Fixed 2000 USDT, 6% daily, 40 days',
+    descriptionAr: 'استثمار ثابت 2000 USDT، 6% يومياً، 40 يوم',
+    fixedAmount: 2000, dailyProfitRate: 0.06, durationHours: 24, totalDays: 40, minWithdrawal: 150,
+    color: '#FFD700', icon: 'gold', sortOrder: 7,
+  },
+  {
+    name: 'Elite Plan',
+    nameAr: 'الخطة النخبة',
+    description: 'Fixed 5000 USDT, 7% daily, 50 days',
+    descriptionAr: 'استثمار ثابت 5000 USDT، 7% يومياً، 50 يوم',
+    fixedAmount: 5000, dailyProfitRate: 0.07, durationHours: 24, totalDays: 50, minWithdrawal: 300,
+    color: '#FF6B6B', icon: 'diamond', sortOrder: 8,
+  },
+  {
+    name: 'Legendary Plan',
+    nameAr: 'الخطة الأسطورية',
+    description: 'Fixed 10000 USDT, 8% daily, 60 days',
+    descriptionAr: 'استثمار ثابت 10000 USDT، 8% يومياً، 60 يوم',
+    fixedAmount: 10000, dailyProfitRate: 0.08, durationHours: 24, totalDays: 60, minWithdrawal: 500,
+    color: '#FF00FF', icon: 'diamond', sortOrder: 9,
   },
 ]
 

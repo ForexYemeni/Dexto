@@ -217,6 +217,41 @@ export function AdminSettings() {
           />
           {locale === 'ar' ? 'الموافقة التلقائية على الإيداعات' : 'Auto-approve deposits'}
         </label>
+        {/* First deposit bonus */}
+        <div className="glass rounded-xl p-3 bg-gradient-to-r from-amber-500/10 to-transparent">
+          <p className="text-xs text-amber-400 font-medium mb-2">
+            {locale === 'ar' ? '🎁 مكافأة أول إيداع' : '🎁 First Deposit Bonus'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-white/40 mb-1 block">
+                {locale === 'ar' ? 'القيمة' : 'Value'}
+              </label>
+              <input
+                type="number"
+                value={(settings.firstDepositBonus || 0).toString()}
+                onChange={(e) => update('firstDepositBonus', Number(e.target.value))}
+                className="w-full bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-white/40 mb-1 block">
+                {locale === 'ar' ? 'النوع' : 'Type'}
+              </label>
+              <select
+                value={settings.firstDepositBonusType || 'percent'}
+                onChange={(e) => update('firstDepositBonusType', e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-white text-sm"
+              >
+                <option value="percent" className="bg-slate-900">{locale === 'ar' ? 'نسبة %' : 'Percent %'}</option>
+                <option value="fixed" className="bg-slate-900">{locale === 'ar' ? 'ثابت USDT' : 'Fixed USDT'}</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-[10px] text-white/30 mt-1">
+            {locale === 'ar' ? '0 = بدون مكافأة | مثال: 10% على 100 USDT = 10 USDT إضافية' : '0 = no bonus | Example: 10% on 100 USDT = 10 USDT extra'}
+          </p>
+        </div>
       </SettingsSection>
 
       {/* Withdrawal settings */}
@@ -247,11 +282,17 @@ export function AdminSettings() {
 
       {/* Referral settings */}
       <SettingsSection title={t('referralSettings')}>
+        <p className="text-[10px] text-white/40 mb-3">
+          {locale === 'ar' ? 'عمولة نسبة مئوية من كل إيداع يقوم به المستخدم المُحال' : 'Percentage commission from each deposit made by referred user'}
+        </p>
         <div className="grid grid-cols-3 gap-3">
-          <SettingField label={`${t('level1')} (%)`} type="number" value={(settings.referralLevel1 * 100).toString()} onChange={(v) => update('referralLevel1', Number(v) / 100)} />
-          <SettingField label={`${t('level2')} (%)`} type="number" value={(settings.referralLevel2 * 100).toString()} onChange={(v) => update('referralLevel2', Number(v) / 100)} />
-          <SettingField label={`${t('level3')} (%)`} type="number" value={(settings.referralLevel3 * 100).toString()} onChange={(v) => update('referralLevel3', Number(v) / 100)} />
+          <SettingField label={`${t('level1')} (%)`} type="number" value={((settings.referralLevel1Fixed || 0.10) * 100).toString()} onChange={(v) => update('referralLevel1Fixed', Number(v) / 100)} />
+          <SettingField label={`${t('level2')} (%)`} type="number" value={((settings.referralLevel2Fixed || 0.05) * 100).toString()} onChange={(v) => update('referralLevel2Fixed', Number(v) / 100)} />
+          <SettingField label={`${t('level3')} (%)`} type="number" value={((settings.referralLevel3Fixed || 0.02) * 100).toString()} onChange={(v) => update('referralLevel3Fixed', Number(v) / 100)} />
         </div>
+        <p className="text-[10px] text-amber-400/60 mt-2">
+          {locale === 'ar' ? 'مثال: L1 = 10% → إيداع 100 USDT → العمولة = 10 USDT' : 'Example: L1 = 10% → deposit 100 USDT → commission = 10 USDT'}
+        </p>
       </SettingsSection>
 
       {/* Support settings */}

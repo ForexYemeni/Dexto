@@ -60,7 +60,7 @@ model MiningPlan {
   nameAr          String
   description     String?
   descriptionAr   String?
-  fixedAmount     Float    // FIXED investment amount (not range)
+  fixedAmount     Float?   // FIXED investment amount (null for old plans)
   dailyProfitRate Float    // e.g., 0.02 = 2%
   durationHours   Int      @default(24)
   totalDays       Int      @default(7)
@@ -357,10 +357,10 @@ model SystemSetting {
   // first deposit bonus
   firstDepositBonus     Float   @default(0)   // 0 = no bonus
   firstDepositBonusType String  @default("percent") // percent | fixed
-  // referral - FIXED amount per deposit (not percentage of profit)
-  referralLevel1Fixed   Float   @default(5)   // L1 gets 5 USDT per referral deposit
-  referralLevel2Fixed   Float   @default(2)   // L2 gets 2 USDT
-  referralLevel3Fixed   Float   @default(1)   // L3 gets 1 USDT
+  // referral - PERCENTAGE of deposit amount (0.10 = 10% of deposit)
+  referralLevel1Fixed   Float   @default(0.10)  // L1 gets 10% of deposit
+  referralLevel2Fixed   Float   @default(0.05)  // L2 gets 5% of deposit
+  referralLevel3Fixed   Float   @default(0.02)  // L3 gets 2% of deposit
   // support
   supportEmail    String   @default("support@cryptomining.io")
   supportPhone    String   @default("")

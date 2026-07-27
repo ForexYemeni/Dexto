@@ -583,20 +583,23 @@ async function reviewDeposit(depositId: string, status: 'completed' | 'rejected'
         },
       })
 
-      // Process FIXED referral commissions on deposit
+      // Process referral commissions as PERCENTAGE of deposit
       if (settings) {
         const levels = [
-          { level: 1, amount: settings.referralLevel1Fixed || 0 },
-          { level: 2, amount: settings.referralLevel2Fixed || 0 },
-          { level: 3, amount: settings.referralLevel3Fixed || 0 },
+          { level: 1, percentage: settings.referralLevel1Fixed || 0 },
+          { level: 2, percentage: settings.referralLevel2Fixed || 0 },
+          { level: 3, percentage: settings.referralLevel3Fixed || 0 },
         ]
 
         const depositUser = await tx.user.findUnique({ where: { id: deposit.userId } })
         let currentUser = depositUser
-        for (const { level, amount: commission } of levels) {
-          if (!currentUser?.referredBy || commission <= 0) break
+        for (const { level, percentage } of levels) {
+          if (!currentUser?.referredBy || percentage <= 0) break
           const referrer = await tx.user.findFirst({ where: { referralCode: currentUser.referredBy } })
           if (!referrer) break
+
+          // Commission = percentage × deposit amount
+          const commission = deposit.amount * percentage
 
           await tx.user.update({
             where: { id: referrer.id },
