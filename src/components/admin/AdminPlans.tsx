@@ -61,12 +61,11 @@ export function AdminPlans() {
       nameAr: cleanPlan.nameAr || '',
       description: cleanPlan.description || null,
       descriptionAr: cleanPlan.descriptionAr || null,
-      price: Number(cleanPlan.price) || Number(cleanPlan.minInvestment) || 50,
+      fixedAmount: Number(cleanPlan.fixedAmount) || 50,
       dailyProfitRate: Number(cleanPlan.dailyProfitRate) || 0.02,
       durationHours: Number(cleanPlan.durationHours) || 24,
       totalDays: Number(cleanPlan.totalDays) || 7,
-      minInvestment: Number(cleanPlan.minInvestment) || 50,
-      maxInvestment: Number(cleanPlan.maxInvestment) || 1000,
+      minWithdrawal: Number(cleanPlan.minWithdrawal) || 10,
       color: cleanPlan.color || '#3B82F6',
       icon: cleanPlan.icon || 'pickaxe',
       isActive: cleanPlan.isActive !== undefined ? cleanPlan.isActive : true,
@@ -133,12 +132,12 @@ export function AdminPlans() {
 
                 <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
                   <div>
-                    <p className="text-white/40">{t('minInvestment')}</p>
-                    <p className="text-white font-bold">{formatCurrency(plan.minInvestment, locale)}</p>
+                    <p className="text-white/40">{locale === 'ar' ? 'مبلغ الاستثمار' : 'Investment Amount'}</p>
+                    <p className="text-white font-bold">{formatCurrency(plan.fixedAmount || 50, locale)} USDT</p>
                   </div>
                   <div>
-                    <p className="text-white/40">{t('maxInvestment')}</p>
-                    <p className="text-white font-bold">{formatCurrency(plan.maxInvestment, locale)}</p>
+                    <p className="text-white/40">{locale === 'ar' ? 'الحد الأدنى للسحب' : 'Min Withdrawal'}</p>
+                    <p className="text-white font-bold">{formatCurrency(plan.minWithdrawal || 10, locale)} USDT</p>
                   </div>
                 </div>
 
@@ -192,8 +191,8 @@ function PlanModal({ plan, onClose, onSave }: { plan: any | null; onClose: () =>
   const { t, locale } = useI18n()
   const [form, setForm] = useState<any>(plan || {
     name: '', nameAr: '', description: '', descriptionAr: '',
-    price: 50, dailyProfitRate: 0.02, durationHours: 24, totalDays: 7,
-    minInvestment: 50, maxInvestment: 1000,
+    fixedAmount: 50, dailyProfitRate: 0.02, durationHours: 24, totalDays: 7,
+    minWithdrawal: 10,
     color: '#3B82F6', icon: 'pickaxe', isActive: true, sortOrder: 1,
   })
 
@@ -225,8 +224,8 @@ function PlanModal({ plan, onClose, onSave }: { plan: any | null; onClose: () =>
           <Field label={`${t('dailyProfitRate')} (%)`} type="number" value={(form.dailyProfitRate * 100).toString()} onChange={(v) => setForm({ ...form, dailyProfitRate: Number(v) / 100 })} />
           <Field label={`${t('duration')} (${t('hours')})`} type="number" value={(form.durationHours || 24).toString()} onChange={(v) => setForm({ ...form, durationHours: Number(v) })} />
           <Field label={locale === 'ar' ? 'مدة الخطة (أيام)' : 'Plan Duration (days)'} type="number" value={(form.totalDays || 7).toString()} onChange={(v) => setForm({ ...form, totalDays: Number(v) })} />
-          <Field label={t('minInvestment')} type="number" value={form.minInvestment.toString()} onChange={(v) => setForm({ ...form, minInvestment: Number(v) })} />
-          <Field label={t('maxInvestment')} type="number" value={form.maxInvestment.toString()} onChange={(v) => setForm({ ...form, maxInvestment: Number(v) })} />
+          <Field label={locale === 'ar' ? 'مبلغ الاستثمار (ثابت)' : 'Investment Amount (Fixed)'} type="number" value={(form.fixedAmount || 50).toString()} onChange={(v) => setForm({ ...form, fixedAmount: Number(v) })} />
+          <Field label={locale === 'ar' ? 'الحد الأدنى للسحب' : 'Min Withdrawal'} type="number" value={(form.minWithdrawal || 10).toString()} onChange={(v) => setForm({ ...form, minWithdrawal: Number(v) })} />
           <Field label={t('primaryColor')} type="color" value={form.color} onChange={(v) => setForm({ ...form, color: v })} />
           <div>
             <label className="text-xs text-white/60 mb-1.5 block">{locale === 'ar' ? 'الأيقونة' : 'Icon'}</label>
