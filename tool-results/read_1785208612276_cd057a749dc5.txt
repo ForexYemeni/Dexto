@@ -1,0 +1,702 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState } from 'react'
+     4→     4→import { useI18n } from '@/hooks/use-i18n'
+     5→     5→import { useAuthStore, useUIStore } from '@/lib/store'
+     6→     6→import { motion, AnimatePresence } from 'framer-motion'
+     7→     7→import {
+     8→     8→  Pickaxe, Clock, TrendingUp, Zap, Award, Gem, Crown, Diamond,
+     9→     9→  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles, ArrowDownToLine,
+    10→    10→} from 'lucide-react'
+    11→    11→import { formatCurrency, formatMeccaTime } from '@/lib/time-utils'
+    12→    12→import { useToast } from '@/hooks/use-toast'
+    13→    13→
+    14→    14→interface MiningData {
+    15→    15→  plans: any[]
+    16→    16→  activeSessions: any[]
+    17→    17→  history: any[]
+    18→    18→  balance: number
+    19→    19→}
+    20→    20→
+    21→    21→export function MiningView() {
+    22→    22→  const { t, locale, isRTL } = useI18n()
+    23→    23→  const { user } = useAuthStore()
+    24→    24→  const setView = useUIStore((s) => s.setView)
+    25→    25→  const { toast } = useToast()
+    26→    26→  const [data, setData] = useState<MiningData | null>(null)
+    27→    27→  const [loading, setLoading] = useState(true)
+    28→    28→  const [startingPlan, setStartingPlan] = useState<string | null>(null)
+    29→    29→  const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
+    30→    30→  const [investmentAmount, setInvestmentAmount] = useState<number>(0)
+    31→    31→  const [showModal, setShowModal] = useState(false)
+    32→    32→
+    33→    33→  const fetchData = async () => {
+    34→    34→    try {
+    35→    35→      const res = await fetch('/api/mining')
+    36→    36→      const json = await res.json()
+    37→    37→      if (!res.ok) {
+    38→    38→        console.error('Mining API error:', json)
+    39→    39→        // Set fallback data so UI doesn't stay empty
+    40→    40→        setData({ plans: [], activeSessions: [], history: [], balance: user?.balance ?? 0 })
+    41→    41→        return
+    42→    42→      }
+    43→    43→      setData(json)
+    44→    44→      if (json.balance !== undefined && user) {
+    45→    45→        useAuthStore.getState().updateUser({ balance: json.balance })
+    46→    46→      }
+    47→    47→    } catch (e) {
+    48→    48→      console.error(e)
+    49→    49→      // Set fallback data
+    50→    50→      setData({ plans: [], activeSessions: [], history: [], balance: user?.balance ?? 0 })
+    51→    51→    } finally {
+    52→    52→      setLoading(false)
+    53→    53→    }
+    54→    54→  }
+    55→    55→
+    56→    56→  useEffect(() => {
+    57→    57→    fetchData()
+    58→    58→    const interval = setInterval(fetchData, 15000)
+    59→    59→    return () => clearInterval(interval)
+    60→    60→  }, [])
+    61→    61→
+    62→    62→  const openStartModal = (plan: any) => {
+    63→    63→    setSelectedPlan(plan)
+    64→    64→    setInvestmentAmount(plan.minInvestment)
+    65→    65→    setShowModal(true)
+    66→    66→  }
+    67→    67→
+    68→    68→  const handleStartMining = async () => {
+    69→    69→    if (!selectedPlan) return
+    70→    70→    if (investmentAmount < selectedPlan.minInvestment || investmentAmount > selectedPlan.maxInvestment) {
+    71→    71→      toast({
+    72→    72→        variant: 'destructive',
+    73→    73→        title: '❌ ' + t('error'),
+    74→    74→        description: `${t('minInvestment')}: ${selectedPlan.minInvestment} USDT`,
+    75→    75→      })
+    76→    76→      return
+    77→    77→    }
+    78→    78→
+    79→    79→    setStartingPlan(selectedPlan.id)
+    80→    80→    try {
+    81→    81→      const res = await fetch('/api/mining', {
+    82→    82→        method: 'POST',
+    83→    83→        headers: { 'Content-Type': 'application/json' },
+    84→    84→        body: JSON.stringify({
+    85→    85→          action: 'subscribe',
+    86→    86→          planId: selectedPlan.id,
+    87→    87→          investmentAmount,
+    88→    88→        }),
+    89→    89→      })
+    90→    90→      const data = await res.json()
+    91→    91→      if (!res.ok) {
+    92→    92→        const errMap: Record<string, string> = {
+    93→    93→          insufficient_balance: t('insufficientBalance'),
+    94→    94→          already_active_for_plan: locale === 'ar' ? 'مشترك بالفعل في هذه الخطة' : 'Already subscribed to this plan',
+    95→    95→          invalid_amount: t('error'),
+    96→    96→          plan_not_available: locale === 'ar' ? 'الخطة غير متاحة' : 'Plan not available',
+    97→    97→        }
+    98→    98→        toast({
+    99→    99→          variant: 'destructive',
+   100→   100→          title: '❌ ' + t('error'),
+   101→   101→          description: errMap[data.error] || t('error'),
+   102→   102→        })
+   103→   103→        return
+   104→   104→      }
+   105→   105→      toast({
+   106→   106→        variant: 'success',
+   107→   107→        title: '✅ ' + (locale === 'ar' ? 'تم الاشتراك بنجاح!' : 'Subscribed successfully!'),
+   108→   108→        description: locale === 'ar'
+   109→   109→          ? `فعّل التعدين يومياً لربح ${formatCurrency(data.session.dailyProfit, locale)} USDT/يوم`
+   110→   110→          : `Activate mining daily to earn ${formatCurrency(data.session.dailyProfit, locale)} USDT/day`,
+   111→   111→      })
+   112→   112→      setShowModal(false)
+   113→   113→      fetchData()
+   114→   114→    } catch (e) {
+   115→   115→      toast({ variant: 'destructive', title: '❌ ' + t('error'), description: t('error') })
+   116→   116→    } finally {
+   117→   117→      setStartingPlan(null)
+   118→   118→    }
+   119→   119→  }
+   120→   120→
+   121→   121→  // Activate daily mining
+   122→   122→  const handleActivateMining = async (sessionId: string) => {
+   123→   123→    try {
+   124→   124→      const res = await fetch('/api/mining', {
+   125→   125→        method: 'POST',
+   126→   126→        headers: { 'Content-Type': 'application/json' },
+   127→   127→        body: JSON.stringify({ action: 'activate', sessionId }),
+   128→   128→      })
+   129→   129→      const data = await res.json()
+   130→   130→      if (!res.ok) {
+   131→   131→        const errMap: Record<string, string> = {
+   132→   132→          already_mining: locale === 'ar' ? 'التعدين مفعّل بالفعل' : 'Mining already activated',
+   133→   133→          plan_completed: locale === 'ar' ? 'اكتملت الخطة' : 'Plan completed',
+   134→   134→          session_not_found: locale === 'ar' ? 'الجلسة غير موجودة' : 'Session not found',
+   135→   135→        }
+   136→   136→        toast({
+   137→   137→          variant: 'destructive',
+   138→   138→          title: '❌ ' + t('error'),
+   139→   139→          description: errMap[data.error] || t('error'),
+   140→   140→        })
+   141→   141→        return
+   142→   142→      }
+   143→   143→      toast({
+   144→   144→        variant: 'success',
+   145→   145→        title: '✅ ' + (locale === 'ar' ? 'تم تفعيل التعدين!' : 'Mining activated!'),
+   146→   146→        description: locale === 'ar' ? 'بدأ التعدين لمدة 24 ساعة' : 'Mining started for 24 hours',
+   147→   147→      })
+   148→   148→      fetchData()
+   149→   149→    } catch (e) {
+   150→   150→      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+   151→   151→    }
+   152→   152→  }
+   153→   153→
+   154→   154→  if (loading || !data) {
+   155→   155→    return (
+   156→   156→      <div className="space-y-4">
+   157→   157→        <div className="h-32 glass rounded-2xl animate-pulse" />
+   158→   158→        <div className="grid md:grid-cols-2 gap-4">
+   159→   159→          {Array.from({ length: 4 }).map((_, i) => (
+   160→   160→            <div key={i} className="h-64 glass rounded-2xl animate-pulse" />
+   161→   161→          ))}
+   162→   162→        </div>
+   163→   163→      </div>
+   164→   164→    )
+   165→   165→  }
+   166→   166→
+   167→   167→  const planIcons: Record<string, React.ReactNode> = {
+   168→   168→    pickaxe: <Pickaxe className="w-6 h-6" />,
+   169→   169→    silver: <Award className="w-6 h-6" />,
+   170→   170→    gold: <Crown className="w-6 h-6" />,
+   171→   171→    diamond: <Diamond className="w-6 h-6" />,
+   172→   172→  }
+   173→   173→
+   174→   174→  return (
+   175→   175→    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+   176→   176→      {/* Active Mining Section */}
+   177→   177→      {data.activeSessions.length > 0 && (
+   178→   178→        <div>
+   179→   179→          <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+   180→   180→            <Zap className="w-5 h-5 text-amber-400" />
+   181→   181→            {t('activeMining')}
+   182→   182→          </h2>
+   183→   183→          <div className="grid md:grid-cols-2 gap-4">
+   184→   184→            {data.activeSessions.map((session) => (
+   185→   185→              <ActiveMiningCard
+   186→   186→                key={session.id}
+   187→   187→                session={session}
+   188→   188→                onActivate={() => handleActivateMining(session.id)}
+   189→   189→              />
+   190→   190→            ))}
+   191→   191→          </div>
+   192→   192→        </div>
+   193→   193→      )}
+   194→   194→
+   195→   195→      {/* Mining Plans */}
+   196→   196→      <div>
+   197→   197→        <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+   198→   198→          <Pickaxe className="w-5 h-5 text-blue-400" />
+   199→   199→          {t('miningPlans')}
+   200→   200→        </h2>
+   201→   201→        <div className="grid md:grid-cols-2 gap-4">
+   202→   202→          {data.plans.map((plan, i) => {
+   203→   203→            const isActive = data.activeSessions.some((s) => s.planId === plan.id)
+   204→   204→            return (
+   205→   205→              <motion.div
+   206→   206→                key={plan.id}
+   207→   207→                initial={{ opacity: 0, y: 20 }}
+   208→   208→                animate={{ opacity: 1, y: 0 }}
+   209→   209→                transition={{ delay: i * 0.1 }}
+   210→   210→                className="premium-card glass rounded-2xl p-6 relative overflow-hidden"
+   211→   211→                style={{ borderColor: `${plan.color}40` }}
+   212→   212→              >
+   213→   213→                {/* Background glow */}
+   214→   214→                <div
+   215→   215→                  className="absolute -top-12 -right-12 w-40 h-40 rounded-full blur-3xl opacity-20"
+   216→   216→                  style={{ background: plan.color }}
+   217→   217→                />
+   218→   218→
+   219→   219→                <div className="relative">
+   220→   220→                  {/* Plan header */}
+   221→   221→                  <div className="flex items-start justify-between mb-4">
+   222→   222→                    <div className="flex items-center gap-3">
+   223→   223→                      <div
+   224→   224→                        className="w-12 h-12 rounded-xl flex items-center justify-center text-white"
+   225→   225→                        style={{ background: `linear-gradient(135deg, ${plan.color}, ${plan.color}80)` }}
+   226→   226→                      >
+   227→   227→                        {planIcons[plan.icon] || <Gem className="w-6 h-6" />}
+   228→   228→                      </div>
+   229→   229→                      <div>
+   230→   230→                        <h3 className="text-base font-bold text-white">
+   231→   231→                          {locale === 'ar' ? plan.nameAr : plan.name}
+   232→   232→                        </h3>
+   233→   233→                        <p className="text-xs text-white/40">
+   234→   234→                          {locale === 'ar' ? plan.descriptionAr : plan.description}
+   235→   235→                        </p>
+   236→   236→                      </div>
+   237→   237→                    </div>
+   238→   238→                    {isActive && (
+   239→   239→                      <span className="text-[10px] px-2 py-1 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1">
+   240→   240→                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+   241→   241→                        {locale === 'ar' ? 'يعمل' : 'Running'}
+   242→   242→                      </span>
+   243→   243→                    )}
+   244→   244→                  </div>
+   245→   245→
+   246→   246→                  {/* Plan stats */}
+   247→   247→                  <div className="grid grid-cols-2 gap-3 mb-4">
+   248→   248→                    <div className="glass rounded-xl p-3">
+   249→   249→                      <p className="text-[10px] text-white/40 mb-1">{t('dailyProfit')}</p>
+   250→   250→                      <p className="text-lg font-bold text-green-400">
+   251→   251→                        {(plan.dailyProfitRate * 100).toFixed(0)}%
+   252→   252→                      </p>
+   253→   253→                    </div>
+   254→   254→                    <div className="glass rounded-xl p-3">
+   255→   255→                      <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'المدة' : 'Duration'}</p>
+   256→   256→                      <p className="text-lg font-bold text-white">
+   257→   257→                        {plan.totalDays || 7} {locale === 'ar' ? 'أيام' : 'days'}
+   258→   258→                      </p>
+   259→   259→                    </div>
+   260→   260→                    <div className="glass rounded-xl p-3">
+   261→   261→                      <p className="text-[10px] text-white/40 mb-1">{t('minInvestment')}</p>
+   262→   262→                      <p className="text-sm font-bold text-white">
+   263→   263→                        {formatCurrency(plan.minInvestment, locale)}
+   264→   264→                      </p>
+   265→   265→                    </div>
+   266→   266→                    <div className="glass rounded-xl p-3">
+   267→   267→                      <p className="text-[10px] text-white/40 mb-1">{t('maxInvestment')}</p>
+   268→   268→                      <p className="text-sm font-bold text-white">
+   269→   269→                        {formatCurrency(plan.maxInvestment, locale)}
+   270→   270→                      </p>
+   271→   271→                    </div>
+   272→   272→                  </div>
+   273→   273→
+   274→   274→                  {/* Subscribe button */}
+   275→   275→                  <button
+   276→   276→                    onClick={() => openStartModal(plan)}
+   277→   277→                    disabled={isActive || !plan.isActive}
+   278→   278→                    className="w-full py-3 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+   279→   279→                    style={{
+   280→   280→                      background: isActive
+   281→   281→                        ? 'rgba(255,255,255,0.05)'
+   282→   282→                        : `linear-gradient(135deg, ${plan.color}, ${plan.color}80)`,
+   283→   283→                    }}
+   284→   284→                  >
+   285→   285→                    {isActive ? (
+   286→   286→                      <>
+   287→   287→                        <Timer className="w-4 h-4" />
+   288→   288→                        {locale === 'ar' ? 'مشترك بالفعل' : 'Subscribed'}
+   289→   289→                      </>
+   290→   290→                    ) : !plan.isActive ? (
+   291→   291→                      <>
+   292→   292→                        <Lock className="w-4 h-4" />
+   293→   293→                        {locale === 'ar' ? 'غير متاحة' : 'Unavailable'}
+   294→   294→                      </>
+   295→   295→                    ) : (
+   296→   296→                      <>
+   297→   297→                        <Sparkles className="w-4 h-4" />
+   298→   298→                        {locale === 'ar' ? 'اشترك في الخطة' : 'Subscribe to Plan'}
+   299→   299→                      </>
+   300→   300→                    )}
+   301→   301→                  </button>
+   302→   302→                  {/* Show balance status */}
+   303→   303→                  {!isActive && plan.isActive && (
+   304→   304→                    <div className="mt-2 text-center">
+   305→   305→                      {data.balance >= plan.minInvestment ? (
+   306→   306→                        <p className="text-[10px] text-green-400">
+   307→   307→                          {locale === 'ar'
+   308→   308→                            ? `رصيدك: ${formatCurrency(data.balance, locale)} USDT ✓`
+   309→   309→                            : `Balance: ${formatCurrency(data.balance, locale)} USDT ✓`}
+   310→   310→                        </p>
+   311→   311→                      ) : (
+   312→   312→                        <button
+   313→   313→                          onClick={() => setView('deposit')}
+   314→   314→                          className="text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+   315→   315→                        >
+   316→   316→                          {locale === 'ar'
+   317→   317→                            ? `رصيدك ${formatCurrency(data.balance, locale)} USDT - اضغط للإيداع`
+   318→   318→                            : `Balance ${formatCurrency(data.balance, locale)} USDT - Click to deposit`}
+   319→   319→                        </button>
+   320→   320→                      )}
+   321→   321→                    </div>
+   322→   322→                  )}
+   323→   323→                </div>
+   324→   324→              </motion.div>
+   325→   325→            )
+   326→   326→          })}
+   327→   327→        </div>
+   328→   328→      </div>
+   329→   329→
+   330→   330→      {/* Mining History */}
+   331→   331→      <div>
+   332→   332→        <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+   333→   333→          <Clock className="w-5 h-5 text-purple-400" />
+   334→   334→          {t('miningHistory')}
+   335→   335→        </h2>
+   336→   336→        <div className="glass rounded-2xl p-6">
+   337→   337→          {data.history.length === 0 ? (
+   338→   338→            <div className="text-center py-12">
+   339→   339→              <Pickaxe className="w-12 h-12 mx-auto text-white/10 mb-3" />
+   340→   340→              <p className="text-sm text-white/40">{t('noMiningHistory')}</p>
+   341→   341→            </div>
+   342→   342→          ) : (
+   343→   343→            <div className="space-y-2 max-h-96 overflow-y-auto custom-scroll">
+   344→   344→              {data.history.map((h) => (
+   345→   345→                <div key={h.id} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+   346→   346→                  <div className="flex items-center gap-3">
+   347→   347→                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400">
+   348→   348→                      <Check className="w-5 h-5" />
+   349→   349→                    </div>
+   350→   350→                    <div>
+   351→   351→                      <p className="text-sm font-medium text-white">{h.planName}</p>
+   352→   352→                      <p className="text-[10px] text-white/40">
+   353→   353→                        {formatMeccaTime(h.startedAt, locale)} → {formatMeccaTime(h.completedAt, locale)}
+   354→   354→                      </p>
+   355→   355→                    </div>
+   356→   356→                  </div>
+   357→   357→                  <div className="text-end">
+   358→   358→                    <p className="text-sm font-bold text-green-400 tabular-nums">
+   359→   359→                      +{formatCurrency(h.profitAmount, locale)}
+   360→   360→                    </p>
+   361→   361→                    <p className="text-[10px] text-white/40">
+   362→   362→                      {formatCurrency(h.investmentAmount, locale)} USDT
+   363→   363→                    </p>
+   364→   364→                  </div>
+   365→   365→                </div>
+   366→   366→              ))}
+   367→   367→            </div>
+   368→   368→          )}
+   369→   369→        </div>
+   370→   370→      </div>
+   371→   371→
+   372→   372→      {/* Start mining modal */}
+   373→   373→      <AnimatePresence>
+   374→   374→        {showModal && selectedPlan && (
+   375→   375→          <motion.div
+   376→   376→            initial={{ opacity: 0 }}
+   377→   377→            animate={{ opacity: 1 }}
+   378→   378→            exit={{ opacity: 0 }}
+   379→   379→            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+   380→   380→            onClick={() => setShowModal(false)}
+   381→   381→          >
+   382→   382→            <motion.div
+   383→   383→              initial={{ scale: 0.9, y: 20 }}
+   384→   384→              animate={{ scale: 1, y: 0 }}
+   385→   385→              exit={{ scale: 0.9, y: 20 }}
+   386→   386→              onClick={(e) => e.stopPropagation()}
+   387→   387→              className="glass-strong rounded-3xl p-6 w-full max-w-md"
+   388→   388→            >
+   389→   389→              <div className="flex items-center gap-3 mb-6">
+   390→   390→                <div
+   391→   391→                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white"
+   392→   392→                  style={{ background: `linear-gradient(135deg, ${selectedPlan.color}, ${selectedPlan.color}80)` }}
+   393→   393→                >
+   394→   394→                  {planIcons[selectedPlan.icon] || <Gem className="w-6 h-6" />}
+   395→   395→                </div>
+   396→   396→                <div>
+   397→   397→                  <h3 className="text-lg font-bold text-white">
+   398→   398→                    {locale === 'ar' ? selectedPlan.nameAr : selectedPlan.name}
+   399→   399→                  </h3>
+   400→   400→                  <p className="text-xs text-white/40">
+   401→   401→                    {t('dailyProfit')}: {(selectedPlan.dailyProfitRate * 100).toFixed(0)}%
+   402→   402→                  </p>
+   403→   403→                </div>
+   404→   404→              </div>
+   405→   405→
+   406→   406→              <div className="space-y-4">
+   407→   407→                {/* Balance */}
+   408→   408→                <div className="glass rounded-xl p-3 flex items-center justify-between">
+   409→   409→                  <span className="text-xs text-white/60">{t('availableBalance')}</span>
+   410→   410→                  <span className={`text-sm font-bold tabular-nums ${(user?.balance ?? 0) < selectedPlan.minInvestment ? 'text-amber-400' : 'text-green-400'}`}>
+   411→   411→                    {formatCurrency(user?.balance ?? 0, locale)} USDT
+   412→   412→                  </span>
+   413→   413→                </div>
+   414→   414→
+   415→   415→                {/* Insufficient balance warning */}
+   416→   416→                {(user?.balance ?? 0) < selectedPlan.minInvestment && (
+   417→   417→                  <div className="glass rounded-xl p-4 bg-amber-500/10 border border-amber-500/30">
+   418→   418→                    <p className="text-xs text-amber-400 mb-3 flex items-center gap-2">
+   419→   419→                      <AlertCircle className="w-4 h-4" />
+   420→   420→                      {locale === 'ar'
+   421→   421→                        ? `رصيدك غير كافٍ. تحتاج ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT إضافية`
+   422→   422→                        : `Insufficient balance. Need ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT more`}
+   423→   423→                    </p>
+   424→   424→                    <button
+   425→   425→                      onClick={() => { setShowModal(false); setView('deposit') }}
+   426→   426→                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+   427→   427→                    >
+   428→   428→                      <ArrowDownToLine className="w-4 h-4" />
+   429→   429→                      {locale === 'ar' ? 'اذهب للإيداع' : 'Go to Deposit'}
+   430→   430→                    </button>
+   431→   431→                  </div>
+   432→   432→                )}
+   433→   433→
+   434→   434→                {/* Investment amount input */}
+   435→   435→                <div>
+   436→   436→                  <label className="text-xs text-white/60 mb-1.5 block">{t('investmentAmount')}</label>
+   437→   437→                  <input
+   438→   438→                    type="number"
+   439→   439→                    value={investmentAmount}
+   440→   440→                    onChange={(e) => setInvestmentAmount(Number(e.target.value))}
+   441→   441→                    min={selectedPlan.minInvestment}
+   442→   442→                    max={selectedPlan.maxInvestment}
+   443→   443→                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-lg font-bold focus:outline-none focus:border-blue-500/50"
+   444→   444→                  />
+   445→   445→                  <div className="flex justify-between text-[10px] text-white/40 mt-1">
+   446→   446→                    <span>{t('min')}: {formatCurrency(selectedPlan.minInvestment, locale)}</span>
+   447→   447→                    <span>{t('max')}: {formatCurrency(selectedPlan.maxInvestment, locale)}</span>
+   448→   448→                  </div>
+   449→   449→                </div>
+   450→   450→
+   451→   451→                {/* Expected profit - daily + total */}
+   452→   452→                <div className="glass rounded-xl p-4 bg-gradient-to-br from-green-500/10 to-green-600/5">
+   453→   453→                  <div className="flex items-center justify-between mb-2">
+   454→   454→                    <span className="text-xs text-white/60 flex items-center gap-1">
+   455→   455→                      <TrendingUp className="w-3.5 h-3.5 text-green-400" />
+   456→   456→                      {locale === 'ar' ? 'الربح اليومي' : 'Daily Profit'}
+   457→   457→                    </span>
+   458→   458→                    <span className="text-lg font-bold text-green-400 tabular-nums">
+   459→   459→                      +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate, locale)} USDT
+   460→   460→                    </span>
+   461→   461→                  </div>
+   462→   462→                  <div className="flex items-center justify-between mb-2 pt-2 border-t border-white/10">
+   463→   463→                    <span className="text-xs text-white/60">
+   464→   464→                      {locale === 'ar' ? `إجمالي الأرباح (${selectedPlan.totalDays || 7} أيام)` : `Total Profit (${selectedPlan.totalDays || 7} days)`}
+   465→   465→                    </span>
+   466→   466→                    <span className="text-lg font-bold text-purple-400 tabular-nums">
+   467→   467→                      +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate * (selectedPlan.totalDays || 7), locale)} USDT
+   468→   468→                    </span>
+   469→   469→                  </div>
+   470→   470→                  <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+   471→   471→                    <Lock className="w-3 h-3 text-amber-400" />
+   472→   472→                    <p className="text-[10px] text-white/50">
+   473→   473→                      {locale === 'ar'
+   474→   474→                        ? `رأس المال مقفل لمدة ${selectedPlan.totalDays || 7} أيام - تسحب الأرباح يومياً`
+   475→   475→                        : `Capital locked for ${selectedPlan.totalDays || 7} days - withdraw profits daily`}
+   476→   476→                    </p>
+   477→   477→                  </div>
+   478→   478→                </div>
+   479→   479→
+   480→   480→                {/* Action buttons */}
+   481→   481→                <div className="flex gap-2">
+   482→   482→                  <button
+   483→   483→                    onClick={() => setShowModal(false)}
+   484→   484→                    className="flex-1 py-3 rounded-xl glass text-white text-sm font-medium hover:bg-white/10 transition-colors"
+   485→   485→                  >
+   486→   486→                    {t('cancel')}
+   487→   487→                  </button>
+   488→   488→                  <button
+   489→   489→                    onClick={handleStartMining}
+   490→   490→                    disabled={startingPlan === selectedPlan.id}
+   491→   491→                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold hover:scale-[1.02] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+   492→   492→                  >
+   493→   493→                    {startingPlan === selectedPlan.id ? (
+   494→   494→                      <Loader2 className="w-4 h-4 animate-spin" />
+   495→   495→                    ) : (
+   496→   496→                      <>
+   497→   497→                        <Sparkles className="w-4 h-4" />
+   498→   498→                        {locale === 'ar' ? 'اشترك في الخطة' : 'Subscribe to Plan'}
+   499→   499→                      </>
+   500→   500→                    )}
+   501→   501→                  </button>
+   502→   502→                </div>
+   503→   503→              </div>
+   504→   504→            </motion.div>
+   505→   505→          </motion.div>
+   506→   506→        )}
+   507→   507→      </AnimatePresence>
+   508→   508→    </div>
+   509→   509→  )
+   510→   510→}
+   511→   511→
+   512→   512→function ActiveMiningCard({ session, onActivate }: { session: any; onActivate: () => void }) {
+   513→   513→  const { t, locale, isRTL } = useI18n()
+   514→   514→  const [now, setNow] = useState(Date.now())
+   515→   515→
+   516→   516→  useEffect(() => {
+   517→   517→    const i = setInterval(() => setNow(Date.now()), 1000)
+   518→   518→    return () => clearInterval(i)
+   519→   519→  }, [])
+   520→   520→
+   521→   521→  const start = new Date(session.startedAt).getTime()
+   522→   522→  const end = new Date(session.endsAt).getTime()
+   523→   523→  const total = end - start
+   524→   524→  const elapsed = now - start
+   525→   525→  const remaining = Math.max(0, end - now)
+   526→   526→  const progress = Math.min(100, Math.max(0, (elapsed / total) * 100))
+   527→   527→
+   528→   528→  const hours = Math.floor(remaining / 3600000)
+   529→   529→  const minutes = Math.floor((remaining % 3600000) / 60000)
+   530→   530→  const seconds = Math.floor((remaining % 60000) / 1000)
+   531→   531→
+   532→   532→  // Multi-day plan info
+   533→   533→  const totalDays = session.totalDays || 1
+   534→   534→  const currentDay = session.currentDay || 0
+   535→   535→  const dailyProfit = session.dailyProfit || session.expectedProfit
+   536→   536→  const totalProfit = dailyProfit * totalDays
+   537→   537→  const earnedProfit = dailyProfit * currentDay
+   538→   538→  const isMiningStarted = session.miningStarted ?? true
+   539→   539→  const planEndsAt = session.planEndsAt ? new Date(session.planEndsAt).getTime() : null
+   540→   540→  const planRemaining = planEndsAt ? Math.max(0, planEndsAt - now) : 0
+   541→   541→  const planDaysLeft = Math.ceil(planRemaining / (24 * 60 * 60 * 1000))
+   542→   542→
+   543→   543→  return (
+   544→   544→    <motion.div
+   545→   545→      initial={{ opacity: 0, scale: 0.95 }}
+   546→   546→      animate={{ opacity: 1, scale: 1 }}
+   547→   547→      className="premium-card glass rounded-2xl p-6 relative overflow-hidden"
+   548→   548→      style={{ borderColor: `${session.planColor}40` }}
+   549→   549→    >
+   550→   550→      <div
+   551→   551→        className="absolute -top-12 -right-12 w-40 h-40 rounded-full blur-3xl opacity-30"
+   552→   552→        style={{ background: session.planColor }}
+   553→   553→      />
+   554→   554→
+   555→   555→      <div className="relative">
+   556→   556→        <div className="flex items-center justify-between mb-4">
+   557→   557→          <div className="flex items-center gap-3">
+   558→   558→            <div
+   559→   559→              className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
+   560→   560→              style={{ background: `linear-gradient(135deg, ${session.planColor}, ${session.planColor}80)` }}
+   561→   561→            >
+   562→   562→              <Pickaxe className="w-5 h-5" />
+   563→   563→            </div>
+   564→   564→            <div>
+   565→   565→              <h3 className="text-sm font-bold text-white">
+   566→   566→                {locale === 'ar' ? session.planNameAr : session.planName}
+   567→   567→              </h3>
+   568→   568→              <p className="text-[10px] text-white/40">
+   569→   569→                {formatCurrency(session.investmentAmount, locale)} USDT
+   570→   570→              </p>
+   571→   571→            </div>
+   572→   572→          </div>
+   573→   573→          <span className={`text-[10px] px-2 py-1 rounded-full flex items-center gap-1 ${
+   574→   574→            isMiningStarted ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+   575→   575→          }`}>
+   576→   576→            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+   577→   577→              isMiningStarted ? 'bg-green-400' : 'bg-amber-400'
+   578→   578→            }`} />
+   579→   579→            {isMiningStarted
+   580→   580→              ? (locale === 'ar' ? 'يعمل' : 'Mining')
+   581→   581→              : (locale === 'ar' ? 'بانتظار التفعيل' : 'Needs Activation')}
+   582→   582→          </span>
+   583→   583→        </div>
+   584→   584→
+   585→   585→        {/* Activate Mining Button - shows when miningStarted=false */}
+   586→   586→        {!isMiningStarted && currentDay < totalDays && (
+   587→   587→          <button
+   588→   588→            onClick={onActivate}
+   589→   589→            className="w-full py-3 mb-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 animate-pulse-glow"
+   590→   590→          >
+   591→   591→            <Zap className="w-4 h-4" />
+   592→   592→            {locale === 'ar' ? `تفعيل التعدين - اليوم ${currentDay + 1}` : `Activate Mining - Day ${currentDay + 1}`}
+   593→   593→          </button>
+   594→   594→        )}
+   595→   595→
+   596→   596→        {/* Days Progress - NEW */}
+   597→   597→        <div className="glass rounded-xl p-3 mb-4 bg-gradient-to-r from-blue-500/10 to-purple-500/5 border border-blue-500/20">
+   598→   598→          <div className="flex items-center justify-between mb-2">
+   599→   599→            <span className="text-xs text-white/60 font-medium">
+   600→   600→              {locale === 'ar' ? 'تقدم الخطة' : 'Plan Progress'}
+   601→   601→            </span>
+   602→   602→            <span className="text-xs font-bold text-white">
+   603→   603→              {locale === 'ar' ? `اليوم ${currentDay + 1} من ${totalDays}` : `Day ${currentDay + 1} of ${totalDays}`}
+   604→   604→            </span>
+   605→   605→          </div>
+   606→   606→          {/* Days dots */}
+   607→   607→          <div className="flex gap-1 mb-2">
+   608→   608→            {Array.from({ length: totalDays }).map((_, i) => (
+   609→   609→              <div
+   610→   610→                key={i}
+   611→   611→                className={`flex-1 h-1.5 rounded-full transition-all ${
+   612→   612→                  i < currentDay ? 'bg-green-500' : i === currentDay ? 'bg-blue-500 animate-pulse' : 'bg-white/10'
+   613→   613→                }`}
+   614→   614→              />
+   615→   615→            ))}
+   616→   616→          </div>
+   617→   617→          <div className="flex justify-between text-[10px] text-white/40">
+   618→   618→            <span>{locale === 'ar' ? `${planDaysLeft} يوم متبقي` : `${planDaysLeft} days left`}</span>
+   619→   619→            <span className="text-green-400 font-medium">
+   620→   620→              {locale === 'ar' ? `ربحت: ${formatCurrency(earnedProfit, locale)} USDT` : `Earned: ${formatCurrency(earnedProfit, locale)} USDT`}
+   621→   621→            </span>
+   622→   622→          </div>
+   623→   623→        </div>
+   624→   624→
+   625→   625→        {/* Countdown - show when mining is active */}
+   626→   626→        {isMiningStarted ? (
+   627→   627→          <div className="text-center mb-4">
+   628→   628→            <p className="text-[10px] text-white/40 mb-1">
+   629→   629→              {locale === 'ar' ? 'الوقت المتبقي للتعدين' : 'Time Until Next Cycle'}
+   630→   630→            </p>
+   631→   631→            <p className="text-3xl font-bold gradient-text-electric tabular-nums">
+   632→   632→              {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
+   633→   633→            </p>
+   634→   634→            <p className="text-[10px] text-white/30 mt-1">
+   635→   635→              {locale === 'ar'
+   636→   636→                ? `الدورة تنتهي في الموعد المحدد من الإدارة`
+   637→   637→                : `Cycle ends at admin-set time`}
+   638→   638→            </p>
+   639→   639→          </div>
+   640→   640→        ) : (
+   641→   641→          <div className="text-center mb-4 p-4 glass rounded-xl bg-amber-500/5 border border-amber-500/20">
+   642→   642→            <p className="text-xs text-amber-400 font-medium">
+   643→   643→              {locale === 'ar'
+   644→   644→                ? '🔒 التعدين متوقف - اضغط "تفعيل التعدين" بالأعلى لبدء دورة اليوم'
+   645→   645→                : '🔒 Mining stopped - Click "Activate Mining" above to start today\'s cycle'}
+   646→   646→            </p>
+   647→   647→          </div>
+   648→   648→        )}
+   649→   649→
+   650→   650→        {/* Progress bar - only when mining */}
+   651→   651→        {isMiningStarted && (
+   652→   652→          <div className="mb-4">
+   653→   653→            <div className="flex justify-between text-[10px] text-white/40 mb-1.5">
+   654→   654→              <span>{locale === 'ar' ? 'تقدم اليوم' : 'Today Progress'}</span>
+   655→   655→              <span>{progress.toFixed(1)}%</span>
+   656→   656→            </div>
+   657→   657→            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+   658→   658→              <div
+   659→   659→                className="h-full mining-progress transition-all"
+   660→   660→                style={{ width: `${progress}%` }}
+   661→   661→              />
+   662→   662→            </div>
+   663→   663→          </div>
+   664→   664→        )}
+   665→   665→
+   666→   666→        {/* Daily profit + Total profit */}
+   667→   667→        <div className="grid grid-cols-2 gap-2 mb-4">
+   668→   668→          <div className="glass rounded-xl p-3 bg-gradient-to-r from-green-500/10 to-transparent">
+   669→   669→            <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'الربح اليومي' : 'Daily Profit'}</p>
+   670→   670→            <p className="text-sm font-bold text-green-400">
+   671→   671→              +{formatCurrency(dailyProfit, locale)} USDT
+   672→   672→            </p>
+   673→   673→          </div>
+   674→   674→          <div className="glass rounded-xl p-3 bg-gradient-to-r from-purple-500/10 to-transparent">
+   675→   675→            <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'إجمالي الأرباح' : 'Total Profit'}</p>
+   676→   676→            <p className="text-sm font-bold text-purple-400">
+   677→   677→              +{formatCurrency(totalProfit, locale)} USDT
+   678→   678→            </p>
+   679→   679→          </div>
+   680→   680→        </div>
+   681→   681→
+   682→   682→        {/* Capital locked notice - UPDATED */}
+   683→   683→        <div className="glass rounded-xl p-3 bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+   684→   684→          <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+   685→   685→          <div>
+   686→   686→            <p className="text-[10px] text-white/60 leading-relaxed">
+   687→   687→              {locale === 'ar'
+   688→   688→                ? `رأس المال (${formatCurrency(session.investmentAmount, locale)} USDT) مقفل حتى انتهاء الخطة (${totalDays} أيام). سيتم إرجاعه تلقائياً عند اكتمال جميع الأيام.`
+   689→   689→                : `Capital (${formatCurrency(session.investmentAmount, locale)} USDT) is locked until plan ends (${totalDays} days). It will be returned automatically when all days complete.`}
+   690→   690→            </p>
+   691→   691→            <p className="text-[10px] text-green-400 mt-1">
+   692→   692→              {locale === 'ar'
+   693→   693→                ? '✓ يمكنك سحب الأرباح اليومية من صفحة السحب'
+   694→   694→                : '✓ You can withdraw daily profits from the Withdraw page'}
+   695→   695→            </p>
+   696→   696→          </div>
+   697→   697→        </div>
+   698→   698→      </div>
+   699→   699→    </motion.div>
+   700→   700→  )
+   701→   701→}
+   702→   702→

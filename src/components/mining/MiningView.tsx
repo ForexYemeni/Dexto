@@ -6,7 +6,7 @@ import { useAuthStore, useUIStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Pickaxe, Clock, TrendingUp, Zap, Award, Gem, Crown, Diamond,
-  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles, ArrowDownToLine,
+  Check, Loader2, AlertCircle, Play, Lock, Timer, Sparkles, ArrowDownToLine, Wallet, DollarSign,
 } from 'lucide-react'
 import { formatCurrency, formatMeccaTime } from '@/lib/time-utils'
 import { useToast } from '@/hooks/use-toast'
@@ -27,7 +27,6 @@ export function MiningView() {
   const [loading, setLoading] = useState(true)
   const [startingPlan, setStartingPlan] = useState<string | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
-  const [investmentAmount, setInvestmentAmount] = useState<number>(0)
   const [showModal, setShowModal] = useState(false)
 
   const fetchData = async () => {
@@ -61,17 +60,16 @@ export function MiningView() {
 
   const openStartModal = (plan: any) => {
     setSelectedPlan(plan)
-    setInvestmentAmount(plan.minInvestment)
     setShowModal(true)
   }
 
   const handleStartMining = async () => {
     if (!selectedPlan) return
-    if (investmentAmount < selectedPlan.minInvestment || investmentAmount > selectedPlan.maxInvestment) {
+    if ((user?.balance ?? 0) < selectedPlan.fixedAmount) {
       toast({
         variant: 'destructive',
         title: '❌ ' + t('error'),
-        description: `${t('minInvestment')}: ${selectedPlan.minInvestment} USDT`,
+        description: t('insufficientBalance'),
       })
       return
     }
@@ -84,7 +82,6 @@ export function MiningView() {
         body: JSON.stringify({
           action: 'subscribe',
           planId: selectedPlan.id,
-          investmentAmount,
         }),
       })
       const data = await res.json()
@@ -246,9 +243,9 @@ export function MiningView() {
                   {/* Plan stats */}
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div className="glass rounded-xl p-3">
-                      <p className="text-[10px] text-white/40 mb-1">{t('dailyProfit')}</p>
-                      <p className="text-lg font-bold text-green-400">
-                        {(plan.dailyProfitRate * 100).toFixed(0)}%
+                      <p className="text-[10px] text-white/40 mb-1">{t('investmentAmount')}</p>
+                      <p className="text-lg font-bold text-white">
+                        {formatCurrency(plan.fixedAmount, locale)} USDT
                       </p>
                     </div>
                     <div className="glass rounded-xl p-3">
@@ -258,15 +255,15 @@ export function MiningView() {
                       </p>
                     </div>
                     <div className="glass rounded-xl p-3">
-                      <p className="text-[10px] text-white/40 mb-1">{t('minInvestment')}</p>
-                      <p className="text-sm font-bold text-white">
-                        {formatCurrency(plan.minInvestment, locale)}
+                      <p className="text-[10px] text-white/40 mb-1">{t('dailyProfit')}</p>
+                      <p className="text-sm font-bold text-green-400">
+                        +{formatCurrency(plan.fixedAmount * plan.dailyProfitRate, locale)} USDT
                       </p>
                     </div>
                     <div className="glass rounded-xl p-3">
-                      <p className="text-[10px] text-white/40 mb-1">{t('maxInvestment')}</p>
-                      <p className="text-sm font-bold text-white">
-                        {formatCurrency(plan.maxInvestment, locale)}
+                      <p className="text-[10px] text-white/40 mb-1">{locale === 'ar' ? 'إجمالي الأرباح' : 'Total Profit'}</p>
+                      <p className="text-sm font-bold text-purple-400">
+                        +{formatCurrency(plan.fixedAmount * plan.dailyProfitRate * (plan.totalDays || 7), locale)} USDT
                       </p>
                     </div>
                   </div>
@@ -302,7 +299,7 @@ export function MiningView() {
                   {/* Show balance status */}
                   {!isActive && plan.isActive && (
                     <div className="mt-2 text-center">
-                      {data.balance >= plan.minInvestment ? (
+                      {data.balance >= plan.fixedAmount ? (
                         <p className="text-[10px] text-green-400">
                           {locale === 'ar'
                             ? `رصيدك: ${formatCurrency(data.balance, locale)} USDT ✓`
@@ -398,7 +395,7 @@ export function MiningView() {
                     {locale === 'ar' ? selectedPlan.nameAr : selectedPlan.name}
                   </h3>
                   <p className="text-xs text-white/40">
-                    {t('dailyProfit')}: {(selectedPlan.dailyProfitRate * 100).toFixed(0)}%
+                    {t('dailyProfit')}: +{formatCurrency(selectedPlan.fixedAmount * selectedPlan.dailyProfitRate, locale)} USDT
                   </p>
                 </div>
               </div>
@@ -406,20 +403,34 @@ export function MiningView() {
               <div className="space-y-4">
                 {/* Balance */}
                 <div className="glass rounded-xl p-3 flex items-center justify-between">
-                  <span className="text-xs text-white/60">{t('availableBalance')}</span>
-                  <span className={`text-sm font-bold tabular-nums ${(user?.balance ?? 0) < selectedPlan.minInvestment ? 'text-amber-400' : 'text-green-400'}`}>
+                  <span className="text-xs text-white/60 flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5" />
+                    {t('availableBalance')}
+                  </span>
+                  <span className={`text-sm font-bold tabular-nums ${(user?.balance ?? 0) < selectedPlan.fixedAmount ? 'text-amber-400' : 'text-green-400'}`}>
                     {formatCurrency(user?.balance ?? 0, locale)} USDT
                   </span>
                 </div>
 
+                {/* Fixed investment amount display */}
+                <div className="glass rounded-xl p-3 flex items-center justify-between">
+                  <span className="text-xs text-white/60 flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    {t('investmentAmount')}
+                  </span>
+                  <span className="text-sm font-bold text-white tabular-nums">
+                    {formatCurrency(selectedPlan.fixedAmount, locale)} USDT
+                  </span>
+                </div>
+
                 {/* Insufficient balance warning */}
-                {(user?.balance ?? 0) < selectedPlan.minInvestment && (
+                {(user?.balance ?? 0) < selectedPlan.fixedAmount && (
                   <div className="glass rounded-xl p-4 bg-amber-500/10 border border-amber-500/30">
                     <p className="text-xs text-amber-400 mb-3 flex items-center gap-2">
                       <AlertCircle className="w-4 h-4" />
                       {locale === 'ar'
-                        ? `رصيدك غير كافٍ. تحتاج ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT إضافية`
-                        : `Insufficient balance. Need ${formatCurrency(selectedPlan.minInvestment - (user?.balance ?? 0), locale)} USDT more`}
+                        ? `رصيدك غير كافٍ. تحتاج ${formatCurrency(selectedPlan.fixedAmount - (user?.balance ?? 0), locale)} USDT إضافية`
+                        : `Insufficient balance. Need ${formatCurrency(selectedPlan.fixedAmount - (user?.balance ?? 0), locale)} USDT more`}
                     </p>
                     <button
                       onClick={() => { setShowModal(false); setView('deposit') }}
@@ -431,23 +442,6 @@ export function MiningView() {
                   </div>
                 )}
 
-                {/* Investment amount input */}
-                <div>
-                  <label className="text-xs text-white/60 mb-1.5 block">{t('investmentAmount')}</label>
-                  <input
-                    type="number"
-                    value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(Number(e.target.value))}
-                    min={selectedPlan.minInvestment}
-                    max={selectedPlan.maxInvestment}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-lg font-bold focus:outline-none focus:border-blue-500/50"
-                  />
-                  <div className="flex justify-between text-[10px] text-white/40 mt-1">
-                    <span>{t('min')}: {formatCurrency(selectedPlan.minInvestment, locale)}</span>
-                    <span>{t('max')}: {formatCurrency(selectedPlan.maxInvestment, locale)}</span>
-                  </div>
-                </div>
-
                 {/* Expected profit - daily + total */}
                 <div className="glass rounded-xl p-4 bg-gradient-to-br from-green-500/10 to-green-600/5">
                   <div className="flex items-center justify-between mb-2">
@@ -456,7 +450,7 @@ export function MiningView() {
                       {locale === 'ar' ? 'الربح اليومي' : 'Daily Profit'}
                     </span>
                     <span className="text-lg font-bold text-green-400 tabular-nums">
-                      +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate, locale)} USDT
+                      +{formatCurrency(selectedPlan.fixedAmount * selectedPlan.dailyProfitRate, locale)} USDT
                     </span>
                   </div>
                   <div className="flex items-center justify-between mb-2 pt-2 border-t border-white/10">
@@ -464,7 +458,7 @@ export function MiningView() {
                       {locale === 'ar' ? `إجمالي الأرباح (${selectedPlan.totalDays || 7} أيام)` : `Total Profit (${selectedPlan.totalDays || 7} days)`}
                     </span>
                     <span className="text-lg font-bold text-purple-400 tabular-nums">
-                      +{formatCurrency(investmentAmount * selectedPlan.dailyProfitRate * (selectedPlan.totalDays || 7), locale)} USDT
+                      +{formatCurrency(selectedPlan.fixedAmount * selectedPlan.dailyProfitRate * (selectedPlan.totalDays || 7), locale)} USDT
                     </span>
                   </div>
                   <div className="flex items-center gap-2 pt-2 border-t border-white/10">
