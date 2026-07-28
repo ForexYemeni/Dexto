@@ -2,14 +2,34 @@
 
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
-import { useAuthStore } from '@/lib/store'
+import { useAuthStore, useUIStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import {
   ArrowUpFromLine, AlertCircle, Loader2, Clock, CheckCircle2,
-  XCircle, Wallet, Percent,
+  XCircle, Wallet, Percent, Users, UserPlus, Sparkles, ShieldAlert, Link2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, timeAgo } from '@/lib/time-utils'
+
+interface ReferralGate {
+  enabled: boolean
+  mode: 'block' | 'delay' | 'upgrade_only'
+  delayHours: number
+  minRequired: number
+  current: number
+  remaining: number
+  passed: boolean
+  nextPlan: {
+    id: string
+    name: string
+    nameAr: string
+    fixedAmount: number
+    color: string
+    icon: string
+  } | null
+  referralCode: string
+  referralLink: string
+}
 
 interface WithdrawalData {
   withdrawals: any[]
@@ -17,6 +37,7 @@ interface WithdrawalData {
   withdrawalFee: number
   withdrawalFeeType: string
   balance: number
+  referralGate: ReferralGate
 }
 
 const NETWORKS = ['TRC20', 'ERC20', 'BEP20', 'Polygon', 'Solana', 'Arbitrum', 'Optimism', 'TON']
@@ -24,6 +45,7 @@ const NETWORKS = ['TRC20', 'ERC20', 'BEP20', 'Polygon', 'Solana', 'Arbitrum', 'O
 export function WithdrawalView() {
   const { t, locale, isRTL } = useI18n()
   const { user, updateUser } = useAuthStore()
+  const setView = useUIStore((s) => s.setView)
   const { toast } = useToast()
   const [data, setData] = useState<WithdrawalData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,6 +53,7 @@ export function WithdrawalView() {
   const [amount, setAmount] = useState<number>(0)
   const [walletAddress, setWalletAddress] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [showGateModal, setShowGateModal] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -51,6 +74,20 @@ export function WithdrawalView() {
 
   const handleSubmit = async () => {
     if (!data) return
+
+    // Referral gate client-side check (block mode)
+    const gate = data.referralGate
+    if (gate?.enabled && !gate.passed && gate.mode === 'block') {
+      toast({
+        variant: 'destructive',
+        title: '❌ ' + (locale === 'ar' ? 'لا يمكن السحب — دعوة أصدقاء مطلوبة' : 'Cannot withdraw — referrals required'),
+        description: locale === 'ar'
+          ? `يجب عليك دعوة ${gate.remaining} صديق إضافي (مطلوب ${gate.minRequired} إجمالاً، لديك ${gate.current} حالياً). أو قم بالترقية للخطة التالية.`
+          : `You must invite ${gate.remaining} more friend(s) (total ${gate.minRequired} required, you have ${gate.current}). Or upgrade to the next plan.`,
+      })
+      return
+    }
+
     if (amount < data.minWithdrawal) {
       toast({
         variant: 'destructive',
@@ -90,6 +127,18 @@ export function WithdrawalView() {
           insufficient_balance: t('insufficientBalance'),
           missing_fields: t('error'),
         }
+
+        // Special handling for referral gate block
+        if (result.error === 'referral_gate_blocked') {
+          const msg = locale === 'ar' ? result.message_ar : result.message_en
+          toast({
+            variant: 'destructive',
+            title: '❌ ' + (locale === 'ar' ? 'لا يمكن السحب — دعوة أصدقاء مطلوبة' : 'Cannot withdraw — referrals required'),
+            description: msg,
+          })
+          return
+        }
+
         toast({
           variant: 'destructive',
           title: '❌ ' + t('error'),
@@ -97,11 +146,24 @@ export function WithdrawalView() {
         })
         return
       }
-      toast({
-        variant: 'success',
-        title: '✅ ' + (locale === 'ar' ? 'تم إرسال طلب السحب' : 'Withdrawal request submitted'),
-        description: locale === 'ar' ? 'سيتم مراجعة طلبك ومعالجته قريباً' : 'Your request will be reviewed and processed soon',
-      })
+
+      // Handle delayed withdrawal
+      if (result.held) {
+        toast({
+          variant: 'destructive',
+          title: '⏳ ' + (locale === 'ar' ? 'تم تأجيل السحب' : 'Withdrawal delayed'),
+          description: locale === 'ar'
+            ? `طلبك معلّق لمدة ${data.referralGate.delayHours} ساعة بسبب نقص الإحالات. ادعُ ${data.referralGate.remaining} صديق إضافي أو قم بالترقية لإلغاء التأخير.`
+            : `Your request is held for ${data.referralGate.delayHours}h due to insufficient referrals. Invite ${data.referralGate.remaining} more friend(s) or upgrade to lift the delay.`,
+        })
+      } else {
+        toast({
+          variant: 'success',
+          title: '✅ ' + (locale === 'ar' ? 'تم إرسال طلب السحب' : 'Withdrawal request submitted'),
+          description: locale === 'ar' ? 'سيتم مراجعة طلبك ومعالجته قريباً' : 'Your request will be reviewed and processed soon',
+        })
+      }
+
       setAmount(0)
       setWalletAddress('')
       fetchData()
@@ -110,6 +172,16 @@ export function WithdrawalView() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const copyReferralLink = () => {
+    if (!data?.referralGate.referralLink) return
+    navigator.clipboard.writeText(data.referralGate.referralLink)
+    toast({
+      variant: 'success',
+      title: '✅ ' + (locale === 'ar' ? 'تم النسخ' : 'Copied'),
+      description: locale === 'ar' ? 'شارك الرابط مع أصدقائك' : 'Share the link with your friends',
+    })
   }
 
   if (loading || !data) {
@@ -138,6 +210,9 @@ export function WithdrawalView() {
     TON: t('network_ton'),
   }
 
+  const gate = data.referralGate
+  const gateBlocked = gate?.enabled && !gate?.passed && gate?.mode === 'block'
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Header */}
@@ -163,12 +238,144 @@ export function WithdrawalView() {
         </div>
       </div>
 
+      {/* ===== Referral Gate Status Banner ===== */}
+      {gate?.enabled && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`glass rounded-2xl p-5 relative overflow-hidden border ${
+            gate.passed
+              ? 'border-green-500/30 bg-green-500/5'
+              : gate.mode === 'block'
+              ? 'border-red-500/30 bg-red-500/5'
+              : 'border-amber-500/30 bg-amber-500/5'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              gate.passed
+                ? 'bg-green-500/20 text-green-400'
+                : gate.mode === 'block'
+                ? 'bg-red-500/20 text-red-400'
+                : 'bg-amber-500/20 text-amber-400'
+            }`}>
+              {gate.passed ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : gate.mode === 'block' ? (
+                <ShieldAlert className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  {t('referralGateStatus')}
+                </h3>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                  gate.passed
+                    ? 'bg-green-500/20 text-green-400'
+                    : gate.mode === 'block'
+                    ? 'bg-red-500/20 text-red-400'
+                    : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {gate.passed
+                    ? (locale === 'ar' ? 'مكتمل' : 'Passed')
+                    : gate.mode === 'block'
+                    ? (locale === 'ar' ? 'مطلوب إحالات' : 'Referrals needed')
+                    : (locale === 'ar' ? 'تنبيه' : 'Warning')}
+                </span>
+              </div>
+
+              {gate.passed ? (
+                <p className="text-xs text-green-400">
+                  {locale === 'ar'
+                    ? `✓ متطلبات الإحالات مكتملة — لديك ${gate.current}/${gate.minRequired} إحالات. يمكنك السحب الآن.`
+                    : `✓ Referral requirements met — you have ${gate.current}/${gate.minRequired} referrals. You can withdraw now.`}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-white/80 leading-relaxed">
+                    {locale === 'ar'
+                      ? `لإتمام السحب، يجب دعوة ${gate.minRequired} أصدقاء على الأقل. لديك حالياً ${gate.current}/${gate.minRequired}. تحتاج ${gate.remaining} إضافي.`
+                      : `To withdraw, you must invite at least ${gate.minRequired} friends. You currently have ${gate.current}/${gate.minRequired}. You need ${gate.remaining} more.`}
+                  </p>
+
+                  {/* Progress bar */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          gate.mode === 'block' ? 'bg-red-500' : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${Math.min(100, (gate.current / gate.minRequired) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-white/60 font-mono shrink-0">
+                      {gate.current}/{gate.minRequired}
+                    </span>
+                  </div>
+
+                  {/* Mode explanation */}
+                  <p className="text-[10px] text-white/50 leading-relaxed">
+                    {gate.mode === 'block' && (
+                      locale === 'ar'
+                        ? '🚫 وضع الرفض: سيتم رفض طلب السحب حتى تكملة عدد الإحالات المطلوب أو الترقية للخطة التالية.'
+                        : '🚫 Block mode: withdrawal will be rejected until you complete the required referrals or upgrade to the next plan.'
+                    )}
+                    {gate.mode === 'delay' && (
+                      locale === 'ar'
+                        ? `⏳ وضع التأخير: سيتم تأجيل طلب السحب لمدة ${gate.delayHours} ساعة. ادعُ ${gate.remaining} صديق إضافي أو قم بالترقية لإلغاء التأخير.`
+                        : `⏳ Delay mode: your withdrawal will be held for ${gate.delayHours}h. Invite ${gate.remaining} more friend(s) or upgrade to lift the delay.`
+                    )}
+                    {gate.mode === 'upgrade_only' && (
+                      locale === 'ar'
+                        ? 'ℹ️ وضع التنبيه: يمكنك السحب ولكن ننصح بدعوة الأصدقاء أو الترقية.'
+                        : 'ℹ️ Warn mode: you can withdraw but we recommend inviting friends or upgrading.'
+                    )}
+                  </p>
+
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      onClick={copyReferralLink}
+                      className="flex-1 min-w-[140px] py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:scale-[1.02] transition-transform"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      {locale === 'ar' ? 'انسخ رابط الدعوة' : 'Copy Referral Link'}
+                    </button>
+                    <button
+                      onClick={() => setView('referrals')}
+                      className="flex-1 min-w-[140px] py-2.5 px-3 rounded-xl glass text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-white/10 transition-colors"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      {t('inviteMoreFriends')}
+                    </button>
+                    {gate.nextPlan && (
+                      <button
+                        onClick={() => setView('mining')}
+                        className="flex-1 min-w-[140px] py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:scale-[1.02] transition-transform"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {t('upgradePlan')}
+                        {locale === 'ar' ? ` (${gate.nextPlan.nameAr})` : ` (${gate.nextPlan.name})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Withdrawal form */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="glass rounded-2xl p-6"
+          className={`glass rounded-2xl p-6 ${gateBlocked ? 'opacity-60' : ''}`}
         >
           <h3 className="text-base font-semibold text-white mb-4">{t('newWithdrawal')}</h3>
 
@@ -202,13 +409,15 @@ export function WithdrawalView() {
               min={data.minWithdrawal}
               max={data.balance}
               placeholder={`${data.minWithdrawal} USDT`}
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-lg font-bold focus:outline-none focus:border-orange-500/50"
+              disabled={gateBlocked}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-lg font-bold focus:outline-none focus:border-orange-500/50 disabled:opacity-50"
             />
             <div className="flex justify-between text-[10px] text-white/40 mt-1">
               <span>{t('minWithdrawal')}: {formatCurrency(data.minWithdrawal, locale)}</span>
               <button
                 onClick={() => setAmount(data.balance)}
-                className="text-blue-400 hover:text-blue-300"
+                disabled={gateBlocked}
+                className="text-blue-400 hover:text-blue-300 disabled:opacity-50"
               >
                 {locale === 'ar' ? 'الكل' : 'MAX'}
               </button>
@@ -223,7 +432,8 @@ export function WithdrawalView() {
               value={walletAddress}
               onChange={(e) => setWalletAddress(e.target.value)}
               placeholder={locale === 'ar' ? 'أدخل عنوان المحفظة' : 'Enter wallet address'}
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-orange-500/50"
+              disabled={gateBlocked}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-orange-500/50 disabled:opacity-50"
             />
           </div>
 
@@ -261,11 +471,16 @@ export function WithdrawalView() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={submitting || amount < data.minWithdrawal || amount > data.balance}
+            disabled={submitting || amount < data.minWithdrawal || amount > data.balance || gateBlocked}
             className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold shadow-lg shadow-orange-500/30 hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {submitting ? (
               <Loader2 className="w-5 h-5 animate-spin" />
+            ) : gateBlocked ? (
+              <>
+                <ShieldAlert className="w-5 h-5" />
+                {locale === 'ar' ? 'السحب معطّل — اكمل الإحالات' : 'Withdrawal locked — complete referrals'}
+              </>
             ) : (
               <>
                 <ArrowUpFromLine className="w-5 h-5" />
@@ -293,42 +508,58 @@ export function WithdrawalView() {
             </div>
           ) : (
             <div className="space-y-2 max-h-[600px] overflow-y-auto custom-scroll">
-              {data.withdrawals.map((w) => (
-                <div key={w.id} className="glass rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        w.status === 'completed' ? 'bg-green-500/10 text-green-400' :
-                        w.status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
-                        w.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
-                        'bg-blue-500/10 text-blue-400'
-                      }`}>
-                        {w.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> :
-                         w.status === 'pending' ? <Clock className="w-4 h-4" /> :
-                         w.status === 'rejected' ? <XCircle className="w-4 h-4" /> :
-                         <Wallet className="w-4 h-4" />}
+              {data.withdrawals.map((w) => {
+                // Detect referral-gate held withdrawals via note pattern
+                const isHeld = w.note?.startsWith('REFERRAL_GATE_HOLD|')
+                return (
+                  <div key={w.id} className="glass rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          isHeld ? 'bg-amber-500/10 text-amber-400' :
+                          w.status === 'completed' ? 'bg-green-500/10 text-green-400' :
+                          w.status === 'pending' ? 'bg-amber-500/10 text-amber-400' :
+                          w.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
+                          'bg-blue-500/10 text-blue-400'
+                        }`}>
+                          {isHeld ? <Clock className="w-4 h-4" /> :
+                           w.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> :
+                           w.status === 'pending' ? <Clock className="w-4 h-4" /> :
+                           w.status === 'rejected' ? <XCircle className="w-4 h-4" /> :
+                           <Wallet className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-white">{networkLabels[w.network] || w.network}</p>
+                          <p className="text-[10px] text-white/40">{timeAgo(w.createdAt, locale)}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-medium text-white">{networkLabels[w.network] || w.network}</p>
-                        <p className="text-[10px] text-white/40">{timeAgo(w.createdAt, locale)}</p>
-                      </div>
-                    </div>
-                    <div className="text-end">
-                      <p className="text-sm font-bold text-red-400 tabular-nums">
-                        -{formatCurrency(w.amount, locale)}
-                      </p>
-                      {w.fee > 0 && (
-                        <p className="text-[10px] text-white/40">
-                          {locale === 'ar' ? 'صافي' : 'Net'}: {formatCurrency(w.netAmount, locale)}
+                      <div className="text-end">
+                        <p className="text-sm font-bold text-red-400 tabular-nums">
+                          -{formatCurrency(w.amount, locale)}
                         </p>
-                      )}
+                        {w.fee > 0 && (
+                          <p className="text-[10px] text-white/40">
+                            {locale === 'ar' ? 'صافي' : 'Net'}: {formatCurrency(w.netAmount, locale)}
+                          </p>
+                        )}
+                      </div>
                     </div>
+                    {isHeld && (
+                      <div className="glass rounded-lg p-2 mb-2 bg-amber-500/5 border border-amber-500/20">
+                        <p className="text-[10px] text-amber-400 flex items-center gap-1.5">
+                          <ShieldAlert className="w-3 h-3 shrink-0" />
+                          {locale === 'ar'
+                            ? 'معلّق بسبب بوابة الإحالات — ادعُ المزيد من الأصدقاء أو قم بالترقية لإلغاء التأخير.'
+                            : 'Held by referral gate — invite more friends or upgrade to lift the delay.'}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-white/40 font-mono truncate">
+                      → {w.walletAddress.slice(0, 20)}...
+                    </p>
                   </div>
-                  <p className="text-[10px] text-white/40 font-mono truncate">
-                    → {w.walletAddress.slice(0, 20)}...
-                  </p>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </motion.div>

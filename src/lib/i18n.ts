@@ -297,6 +297,26 @@ export const translations = {
     maintenanceMode: 'وضع الصيانة',
     maintenanceMessage: 'رسالة الصيانة',
     saveSettings: 'حفظ الإعدادات',
+
+    // Referral Gate (withdrawal control)
+    referralGate: 'بوابة الإحالات',
+    referralGateSettings: 'إعدادات بوابة الإحالات (التحكم في السحب)',
+    enableReferralGate: 'تفعيل بوابة الإحالات للسحب',
+    minReferralsForWithdrawal: 'الحد الأدنى للإحالات للسماح بالسحب',
+    referralGateMode: 'سلوك البوابة',
+    referralGateModeBlock: 'رفض السحب مباشرة',
+    referralGateModeDelay: 'تأخير السحب لساعات محددة',
+    referralGateModeUpgrade: 'تنبيه فقط (السماح بالسحب)',
+    referralGateDelayHours: 'مدة التأخير (ساعات)',
+    referralGateBlockedTitle: 'لا يمكن السحب — دعوة أصدقاء مطلوبة',
+    referralGateBlockedDesc: 'يجب عليك دعوة {remaining} صديق إضافي (مطلوب {required} إجمالاً، لديك {current} حالياً). أو يمكنك الترقية للخطة التالية لتفعيل السحب فوراً.',
+    referralGateDelayedTitle: 'سيتم تأخير السحب',
+    referralGateDelayedDesc: 'سيتم تأخير طلبك لمدة {hours} ساعة. ادعُ {remaining} صديق إضافي أو قم بالترقية لإلغاء التأخير.',
+    referralGatePassed: '✓ متطلبات الإحالات مكتملة — يمكنك السحب',
+    referralGateStatus: 'حالة بوابة الإحالات',
+    inviteMoreFriends: 'ادعُ المزيد من الأصدقاء',
+    upgradePlan: 'الترقية للخطة التالية',
+    referralGateInfo: 'لإتمام السحب، يجب دعوة {required} أصدقاء على الأقل. لديك حالياً {current}/{required}.',
     settingsSaved: 'تم حفظ الإعدادات',
     platformName: 'اسم المنصة',
     logo: 'الشعار',
@@ -661,6 +681,26 @@ export const translations = {
     maintenanceMessage: 'Maintenance Message',
     saveSettings: 'Save Settings',
     settingsSaved: 'Settings saved',
+
+    // Referral Gate (withdrawal control)
+    referralGate: 'Referral Gate',
+    referralGateSettings: 'Referral Gate Settings (Withdrawal Control)',
+    enableReferralGate: 'Enable Referral Gate for Withdrawals',
+    minReferralsForWithdrawal: 'Minimum Referrals Required to Withdraw',
+    referralGateMode: 'Gate Behavior',
+    referralGateModeBlock: 'Block Withdrawal Immediately',
+    referralGateModeDelay: 'Delay Withdrawal for X Hours',
+    referralGateModeUpgrade: 'Warn Only (Allow Withdrawal)',
+    referralGateDelayHours: 'Delay Duration (hours)',
+    referralGateBlockedTitle: 'Cannot Withdraw — Referrals Required',
+    referralGateBlockedDesc: 'You must invite {remaining} more friend(s) (total {required} required, you have {current}). Or upgrade to the next plan to unlock withdrawal immediately.',
+    referralGateDelayedTitle: 'Withdrawal will be delayed',
+    referralGateDelayedDesc: 'Your request will be held for {hours} hours. Invite {remaining} more friend(s) or upgrade to lift the delay.',
+    referralGatePassed: '✓ Referral requirements met — you can withdraw',
+    referralGateStatus: 'Referral Gate Status',
+    inviteMoreFriends: 'Invite More Friends',
+    upgradePlan: 'Upgrade to Next Plan',
+    referralGateInfo: 'To withdraw, you must invite at least {required} friends. You currently have {current}/{required}.',
     platformName: 'Platform Name',
     logo: 'Logo',
     primaryColor: 'Primary Color',
@@ -732,8 +772,14 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations.ar
 
-export function t(locale: Locale, key: TranslationKey): string {
-  return translations[locale]?.[key] ?? translations.en[key] ?? key
+export function t(locale: Locale, key: TranslationKey, params?: Record<string, string | number>): string {
+  let value: string = translations[locale]?.[key] ?? translations.en[key] ?? key
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      value = value.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))
+    }
+  }
+  return value
 }
 
 export function isRTL(locale: Locale): boolean {

@@ -370,6 +370,11 @@ model SystemSetting {
   privacyContentAr String  @default("")
   faqContent      String   @default("")
   faqContentAr    String   @default("")
+  // Referral Gate — block/delay withdrawals unless user has X referrals
+  enableReferralGate      Boolean @default(false) // master switch for the referral-gate feature
+  minReferralsForWithdrawal Int    @default(3)    // minimum number of L1 referrals required to withdraw
+  referralGateMode        String  @default("block") // block | delay | upgrade_only
+  referralGateDelayHours  Int     @default(24)   // when mode=delay, hours to hold the withdrawal
 
   updatedAt       DateTime @updatedAt
 

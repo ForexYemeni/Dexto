@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion } from 'framer-motion'
-import { Settings as SettingsIcon, Save, Loader2, ShieldAlert, KeyRound, Mail } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Loader2, ShieldAlert, KeyRound, Mail, Users, ShieldCheck, Clock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore, useUIStore } from '@/lib/store'
 
@@ -293,6 +293,91 @@ export function AdminSettings() {
         <p className="text-[10px] text-amber-400/60 mt-2">
           {locale === 'ar' ? 'مثال: L1 = 10% → إيداع 100 USDT → العمولة = 10 USDT' : 'Example: L1 = 10% → deposit 100 USDT → commission = 10 USDT'}
         </p>
+      </SettingsSection>
+
+      {/* ===== Referral Gate Settings ===== */}
+      <SettingsSection title={t('referralGateSettings')}>
+        <div className="glass rounded-xl p-3 bg-blue-500/5 border border-blue-500/20 flex items-start gap-2 mb-2">
+          <Users className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-white/60 leading-relaxed">
+            {locale === 'ar'
+              ? 'بوابة الإحالات تتحكم في السماح بالسحب بناءً على عدد الأصدقاء الذين دعاهم المستخدم. يمكنك رفض السحب، تأخيره لساعات محددة، أو التنبيه فقط. كما يقترح النظام على المستخدم الترقية للخطة التالية كبديل.'
+              : 'The referral gate controls whether withdrawals are allowed based on how many friends the user has invited. You can block the withdrawal, delay it for a set number of hours, or just warn. The system also suggests upgrading to the next plan as an alternative.'}
+          </p>
+        </div>
+
+        {/* Enable toggle */}
+        <label className="flex items-center gap-2 text-white text-sm bg-green-500/5 rounded-xl p-3 border border-green-500/20">
+          <input
+            type="checkbox"
+            checked={settings.enableReferralGate ?? false}
+            onChange={(e) => update('enableReferralGate', e.target.checked)}
+            className="rounded"
+          />
+          <ShieldCheck className="w-4 h-4 text-green-400" />
+          {t('enableReferralGate')}
+        </label>
+
+        {/* Min referrals required */}
+        <div>
+          <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1.5">
+            <Users className="w-3 h-3" />
+            {t('minReferralsForWithdrawal')}
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={(settings.minReferralsForWithdrawal ?? 3).toString()}
+            onChange={(e) => update('minReferralsForWithdrawal', Math.max(1, Number(e.target.value)))}
+            disabled={!settings.enableReferralGate}
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50 disabled:opacity-50"
+          />
+          <p className="text-[10px] text-white/40 mt-1">
+            {locale === 'ar' ? 'مثال: 3 = يجب على المستخدم دعوة 3 أصدقاء على الأقل للسماح بالسحب' : 'Example: 3 = user must invite at least 3 friends to withdraw'}
+          </p>
+        </div>
+
+        {/* Gate mode */}
+        <div>
+          <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1.5">
+            <ShieldAlert className="w-3 h-3" />
+            {t('referralGateMode')}
+          </label>
+          <select
+            value={settings.referralGateMode ?? 'block'}
+            onChange={(e) => update('referralGateMode', e.target.value)}
+            disabled={!settings.enableReferralGate}
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50 disabled:opacity-50"
+          >
+            <option value="block" className="bg-slate-900">{t('referralGateModeBlock')} 🚫</option>
+            <option value="delay" className="bg-slate-900">{t('referralGateModeDelay')} ⏳</option>
+            <option value="upgrade_only" className="bg-slate-900">{t('referralGateModeUpgrade')} ℹ️</option>
+          </select>
+          <p className="text-[10px] text-white/40 mt-1">
+            {settings.referralGateMode === 'block' && (locale === 'ar' ? '🚫 يرفض طلب السحب فوراً مع رسالة توضح عدد الإحالات المطلوبة' : '🚫 Rejects the withdrawal immediately with a message showing the required referrals')}
+            {settings.referralGateMode === 'delay' && (locale === 'ar' ? '⏳ يقبل الطلب لكن يضعه في حالة معلّقة لمدة محددة' : '⏳ Accepts the request but holds it pending for a set duration')}
+            {settings.referralGateMode === 'upgrade_only' && (locale === 'ar' ? 'ℹ️ يسمح بالسحب لكن يعرض تنبيهاً ينصح بإكمال الإحالات' : 'ℹ️ Allows the withdrawal but shows a warning recommending to complete referrals')}
+          </p>
+        </div>
+
+        {/* Delay hours (only when mode=delay) */}
+        <div>
+          <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1.5">
+            <Clock className="w-3 h-3" />
+            {t('referralGateDelayHours')}
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={(settings.referralGateDelayHours ?? 24).toString()}
+            onChange={(e) => update('referralGateDelayHours', Math.max(1, Number(e.target.value)))}
+            disabled={!settings.enableReferralGate || settings.referralGateMode !== 'delay'}
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50 disabled:opacity-50"
+          />
+          <p className="text-[10px] text-white/40 mt-1">
+            {locale === 'ar' ? 'عدد ساعات تعليق الطلب قبل الإفراج عنه' : 'Number of hours to hold the withdrawal before releasing it'}
+          </p>
+        </div>
       </SettingsSection>
 
       {/* Support settings */}

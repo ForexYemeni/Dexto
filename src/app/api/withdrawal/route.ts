@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { processCompletedMining } from '../dashboard/route'
 import { notifyAdmins } from '@/lib/notify-admins'
 
-// GET /api/withdrawal - get withdrawal history + settings
+// GET /api/withdrawal - get withdrawal history + settings + referral-gate status
 export async function GET(req: NextRequest) {
   const payload = await getCurrentUser()
   if (!payload) {
@@ -29,6 +29,38 @@ export async function GET(req: NextRequest) {
   })
   const planMinWithdrawal = activeSession?.plan?.minWithdrawal || null
 
+  // ===== Referral gate status =====
+  // Count L1 referrals (users who joined with this user's referral code)
+  const referralCount = user?.referralCode
+    ? await db.user.count({ where: { referredBy: user.referralCode } })
+    : 0
+
+  const gateEnabled = !!settings?.enableReferralGate
+  const minReferralsRequired = settings?.minReferralsForWithdrawal ?? 3
+  const gateMode = settings?.referralGateMode ?? 'block'
+  const gateDelayHours = settings?.referralGateDelayHours ?? 24
+  const gatePassed = !gateEnabled || referralCount >= minReferralsRequired
+  const remainingReferrals = Math.max(0, minReferralsRequired - referralCount)
+
+  // Active mining plan info (used to suggest "upgrade to next plan" as an alternative)
+  const activePlan = activeSession?.plan
+  let nextPlan: any = null
+  if (activePlan) {
+    nextPlan = await db.miningPlan.findFirst({
+      where: {
+        isActive: true,
+        sortOrder: { gt: activePlan.sortOrder },
+      },
+      orderBy: { sortOrder: 'asc' },
+    })
+  } else {
+    // If the user has no active plan, the "next plan" is the cheapest active plan
+    nextPlan = await db.miningPlan.findFirst({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+  }
+
   return NextResponse.json({
     withdrawals: withdrawals.map((w) => ({
       id: w.id,
@@ -48,6 +80,28 @@ export async function GET(req: NextRequest) {
     withdrawalFee: settings?.withdrawalFee ?? 1,
     withdrawalFeeType: settings?.withdrawalFeeType ?? 'percent',
     balance: user?.balance ?? 0,
+    // Referral gate info for the UI
+    referralGate: {
+      enabled: gateEnabled,
+      mode: gateMode,
+      delayHours: gateDelayHours,
+      minRequired: minReferralsRequired,
+      current: referralCount,
+      remaining: remainingReferrals,
+      passed: gatePassed,
+      nextPlan: nextPlan
+        ? {
+            id: nextPlan.id,
+            name: nextPlan.name,
+            nameAr: nextPlan.nameAr,
+            fixedAmount: nextPlan.fixedAmount || 0,
+            color: nextPlan.color,
+            icon: nextPlan.icon,
+          }
+        : null,
+      referralCode: user?.referralCode ?? '',
+      referralLink: user?.referralCode ? `${req.nextUrl.origin}/?ref=${user.referralCode}` : '',
+    },
   })
 }
 
@@ -68,6 +122,44 @@ export async function POST(req: NextRequest) {
   }
 
   const settings = await db.systemSetting.findFirst()
+  const user = await db.user.findUnique({ where: { id: payload.userId } })
+
+  // ===== Referral gate enforcement =====
+  // If the gate is enabled and the user has fewer than the required number of L1 referrals,
+  // the withdrawal is rejected with a clear message telling them how many more friends
+  // they need to invite — or suggesting that they upgrade to a higher plan.
+  if (settings?.enableReferralGate) {
+    const minRequired = settings.minReferralsForWithdrawal ?? 3
+    const mode = settings.referralGateMode ?? 'block'
+    const delayHours = settings.referralGateDelayHours ?? 24
+
+    const referralCount = user?.referralCode
+      ? await db.user.count({ where: { referredBy: user.referralCode } })
+      : 0
+
+    if (referralCount < minRequired) {
+      const remaining = minRequired - referralCount
+
+      // block mode: reject the withdrawal outright
+      if (mode === 'block') {
+        return NextResponse.json(
+          {
+            error: 'referral_gate_blocked',
+            required: minRequired,
+            current: referralCount,
+            remaining,
+            message_ar: `تم رفض السحب. يجب عليك دعوة ${remaining} صديق إضافي (إجمالي ${minRequired} إحالات). لديك حالياً ${referralCount} إحالات. أو قم بالترقية إلى الخطة التالية لتفعيل السحب فوراً.`,
+            message_en: `Withdrawal rejected. You must invite ${remaining} more friend(s) (total ${minRequired} referrals). You currently have ${referralCount} referrals. Or upgrade to the next plan to unlock withdrawal immediately.`,
+          },
+          { status: 403 }
+        )
+      }
+
+      // upgrade_only mode: warn but allow (the warning is shown in the UI; here we just pass through)
+      // delay mode: create the withdrawal but mark it as "pending_referral_hold" with a delayed review time
+      // We handle delay below by continuing to create the request but flagging it.
+    }
+  }
 
   // Get user's active mining plan to determine minimum withdrawal
   const activeSession = await db.userMiningSession.findFirst({
@@ -82,7 +174,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'below_minimum', minRequired: minWithdrawal }, { status: 400 })
   }
 
-  const user = await db.user.findUnique({ where: { id: payload.userId } })
   if (!user || user.balance < amount) {
     return NextResponse.json({ error: 'insufficient_balance' }, { status: 400 })
   }
@@ -96,6 +187,21 @@ export async function POST(req: NextRequest) {
   }
   const netAmount = amount - fee
 
+  // Determine if this withdrawal should be held due to the referral gate (delay mode)
+  const gateEnabled = !!settings?.enableReferralGate
+  const gateMode = settings?.referralGateMode ?? 'block'
+  const minRequired = settings?.minReferralsForWithdrawal ?? 3
+  const delayHours = settings?.referralGateDelayHours ?? 24
+  const referralCount = user?.referralCode
+    ? await db.user.count({ where: { referredBy: user.referralCode } })
+    : 0
+  const shouldHold = gateEnabled && gateMode === 'delay' && referralCount < minRequired
+
+  // Compute the hold release time (used as the note + visible review ETA)
+  const holdReleaseAt = shouldHold
+    ? new Date(Date.now() + delayHours * 60 * 60 * 1000)
+    : null
+
   // Create withdrawal and lock the amount
   const withdrawal = await db.$transaction(async (tx) => {
     // Deduct from balance immediately
@@ -103,6 +209,10 @@ export async function POST(req: NextRequest) {
       where: { id: payload.userId },
       data: { balance: { decrement: amount } },
     })
+
+    const note = shouldHold
+      ? `REFERRAL_GATE_HOLD|release_at=${holdReleaseAt!.toISOString()}|required=${minRequired}|current=${referralCount}`
+      : null
 
     const w = await tx.withdrawal.create({
       data: {
@@ -113,6 +223,7 @@ export async function POST(req: NextRequest) {
         netAmount,
         walletAddress,
         status: 'pending',
+        note,
       },
     })
 
@@ -122,7 +233,7 @@ export async function POST(req: NextRequest) {
         type: 'withdrawal',
         amount: -amount,
         status: 'pending',
-        description: `Withdrawal via ${network}`,
+        description: `Withdrawal via ${network}${shouldHold ? ' (referral-gate held)' : ''}`,
         reference: w.id,
       },
     })
@@ -134,7 +245,7 @@ export async function POST(req: NextRequest) {
     data: {
       userId: payload.userId,
       action: 'withdrawal_request',
-      details: `Network: ${network}, Amount: ${amount} USDT`,
+      details: `Network: ${network}, Amount: ${amount} USDT${shouldHold ? ' (referral-gate held)' : ''}`,
     },
   })
 
@@ -143,12 +254,26 @@ export async function POST(req: NextRequest) {
     type: 'withdrawal',
     title: 'New Withdrawal Request',
     titleAr: 'طلب سحب جديد',
-    message: `User requested withdrawal of ${amount} USDT via ${network} (net: ${netAmount} USDT)`,
-    messageAr: `مستخدم طلب سحب ${amount} USDT عبر شبكة ${network} (الصافي: ${netAmount} USDT)`,
+    message: `User requested withdrawal of ${amount} USDT via ${network} (net: ${netAmount} USDT)${shouldHold ? ' [REFERRAL GATE HELD]' : ''}`,
+    messageAr: `مستخدم طلب سحب ${amount} USDT عبر شبكة ${network} (الصافي: ${netAmount} USDT)${shouldHold ? ' [معلّق بسبب بوابة الإحالات]' : ''}`,
   })
 
-  // Auto-approve if enabled
-  if (settings?.autoApproveWithdrawal) {
+  // Notify user about the referral-gate hold
+  if (shouldHold) {
+    await db.notification.create({
+      data: {
+        userId: payload.userId,
+        type: 'withdrawal',
+        title: 'Withdrawal on hold — invite more friends',
+        titleAr: 'السحب معلّق — ادعُ المزيد من الأصدقاء',
+        message: `Your withdrawal of ${amount} USDT is on hold. Invite at least ${minRequired - referralCount} more friend(s) (you have ${referralCount}/${minRequired}) or upgrade to the next plan. It will be released after ${delayHours}h if no action is taken.`,
+        messageAr: `طلب السحب بقيمة ${amount} USDT معلّق. ادعُ ${minRequired - referralCount} صديق إضافي على الأقل (لديك ${referralCount}/${minRequired}) أو قم بالترقية للخطة التالية. سيتم إطلاقه بعد ${delayHours} ساعة في حال عدم اتخاذ إجراء.`,
+      },
+    })
+  }
+
+  // Auto-approve if enabled (gate-held withdrawals are NEVER auto-approved)
+  if (settings?.autoApproveWithdrawal && !shouldHold) {
     await db.$transaction(async (tx) => {
       await tx.withdrawal.update({
         where: { id: withdrawal.id },
@@ -163,6 +288,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    held: shouldHold,
+    holdReleaseAt: holdReleaseAt?.toISOString() ?? null,
     withdrawal: {
       id: withdrawal.id,
       network: withdrawal.network,
@@ -170,6 +297,7 @@ export async function POST(req: NextRequest) {
       fee: withdrawal.fee,
       netAmount: withdrawal.netAmount,
       status: withdrawal.status,
+      note: withdrawal.note,
       createdAt: withdrawal.createdAt.toISOString(),
     },
   })

@@ -8,7 +8,8 @@ export function useI18n() {
   const setLocale = useUIStore((s) => s.setLocale)
   const toggleLocale = useUIStore((s) => s.toggleLocale)
 
-  const t = (key: TranslationKey): string => translate(locale, key)
+  const t = (key: TranslationKey, params?: Record<string, string | number>): string =>
+    translate(locale, key, params)
 
   return {
     locale,

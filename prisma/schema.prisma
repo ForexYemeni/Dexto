@@ -383,6 +383,11 @@ model SystemSetting {
   emailServiceSecret  String   @default("")
   // Mining schedule
   miningStartTime     String   @default("") // HH:MM format (empty = immediate, "00:00" = midnight Mecca time)
+  // Referral Gate — block/delay withdrawals unless user has X referrals
+  enableReferralGate      Boolean @default(false) // master switch for the referral-gate feature
+  minReferralsForWithdrawal Int    @default(3)    // minimum number of L1 referrals required to withdraw
+  referralGateMode        String  @default("block") // block | delay | upgrade_only (block = reject, delay = pending for X hours, upgrade_only = warn only)
+  referralGateDelayHours  Int     @default(24)   // when mode=delay, hours to hold the withdrawal
 
   updatedAt       DateTime @updatedAt
 
