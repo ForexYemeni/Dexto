@@ -13,6 +13,10 @@ import { formatCurrency, timeAgo } from '@/lib/time-utils'
 
 interface ReferralGate {
   enabled: boolean
+  // active = the gate is actually applying right now (not first-withdrawal exempted)
+  active: boolean
+  isFirstWithdrawal: boolean
+  previousWithdrawalsCount: number
   mode: 'block' | 'delay' | 'upgrade_only'
   delayHours: number
   minRequired: number
@@ -75,9 +79,11 @@ export function WithdrawalView() {
   const handleSubmit = async () => {
     if (!data) return
 
-    // Referral gate client-side check (block mode)
+    // Referral gate client-side check (block mode).
+    // Note: `active` is only true when this is NOT the first withdrawal AND the
+    // user has fewer than the required referrals AND the gate is enabled.
     const gate = data.referralGate
-    if (gate?.enabled && !gate.passed && gate.mode === 'block') {
+    if (gate?.active && !gate.passed && gate.mode === 'block') {
       toast({
         variant: 'destructive',
         title: '❌ ' + (locale === 'ar' ? 'لا يمكن السحب — دعوة أصدقاء مطلوبة' : 'Cannot withdraw — referrals required'),
@@ -211,7 +217,8 @@ export function WithdrawalView() {
   }
 
   const gate = data.referralGate
-  const gateBlocked = gate?.enabled && !gate?.passed && gate?.mode === 'block'
+  // gateBlocked = the user is actually being blocked right now (not first-withdrawal exempted)
+  const gateBlocked = gate?.active && !gate?.passed && gate?.mode === 'block'
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -239,7 +246,9 @@ export function WithdrawalView() {
       </div>
 
       {/* ===== Referral Gate Status Banner ===== */}
-      {gate?.enabled && (
+      {/* Hide the banner entirely on the user's first withdrawal so they don't
+          see the gate exists until they attempt a second withdrawal. */}
+      {gate?.enabled && !gate.isFirstWithdrawal && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}

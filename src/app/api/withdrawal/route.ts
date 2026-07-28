@@ -29,6 +29,15 @@ export async function GET(req: NextRequest) {
   })
   const planMinWithdrawal = activeSession?.plan?.minWithdrawal || null
 
+  // ===== First-withdrawal exemption =====
+  // The referral gate only applies starting from the user's SECOND withdrawal.
+  // The first withdrawal is always allowed (so the user can verify the platform works).
+  // We count any withdrawal ever attempted (regardless of status) to determine this.
+  const previousWithdrawalsCount = await db.withdrawal.count({
+    where: { userId: payload.userId },
+  })
+  const isFirstWithdrawal = previousWithdrawalsCount === 0
+
   // ===== Referral gate status =====
   // Count L1 referrals (users who joined with this user's referral code)
   const referralCount = user?.referralCode
@@ -39,7 +48,17 @@ export async function GET(req: NextRequest) {
   const minReferralsRequired = settings?.minReferralsForWithdrawal ?? 3
   const gateMode = settings?.referralGateMode ?? 'block'
   const gateDelayHours = settings?.referralGateDelayHours ?? 24
-  const gatePassed = !gateEnabled || referralCount >= minReferralsRequired
+  // The gate is only "active" (will actually block/delay) when:
+  //   1. The master toggle is on
+  //   2. The user has fewer than the required referrals
+  //   3. This is NOT the first withdrawal (first one is always allowed)
+  const gateTriggered =
+    gateEnabled &&
+    !isFirstWithdrawal &&
+    referralCount < minReferralsRequired
+  // gatePassed = true means the user can withdraw without any restrictions
+  // (this is what the UI uses to decide whether to show the banner / disable the button)
+  const gatePassed = !gateTriggered
   const remainingReferrals = Math.max(0, minReferralsRequired - referralCount)
 
   // Active mining plan info (used to suggest "upgrade to next plan" as an alternative)
@@ -83,6 +102,10 @@ export async function GET(req: NextRequest) {
     // Referral gate info for the UI
     referralGate: {
       enabled: gateEnabled,
+      // active = the gate is actually applying right now (not first-withdrawal exempted)
+      active: gateTriggered,
+      isFirstWithdrawal,
+      previousWithdrawalsCount,
       mode: gateMode,
       delayHours: gateDelayHours,
       minRequired: minReferralsRequired,
@@ -124,14 +147,27 @@ export async function POST(req: NextRequest) {
   const settings = await db.systemSetting.findFirst()
   const user = await db.user.findUnique({ where: { id: payload.userId } })
 
+  // ===== First-withdrawal exemption =====
+  // The referral gate does NOT apply on the user's first withdrawal.
+  // We count any withdrawal ever attempted by this user (any status).
+  // The first one is always allowed; from the second onward, the gate kicks in.
+  const previousWithdrawalsCount = await db.withdrawal.count({
+    where: { userId: payload.userId },
+  })
+  const isFirstWithdrawal = previousWithdrawalsCount === 0
+
   // ===== Referral gate enforcement =====
-  // If the gate is enabled and the user has fewer than the required number of L1 referrals,
-  // the withdrawal is rejected with a clear message telling them how many more friends
-  // they need to invite — or suggesting that they upgrade to a higher plan.
-  if (settings?.enableReferralGate) {
+  // The gate only applies if:
+  //   1. The master toggle is on
+  //   2. This is NOT the first withdrawal
+  //   3. The user has fewer than the required L1 referrals
+  // When the gate triggers and mode = block, the withdrawal is rejected with
+  // a clear message telling the user how many more friends they need to invite
+  // — or suggesting they upgrade to the next plan.
+  const gateEnabled = !!settings?.enableReferralGate
+  if (gateEnabled && !isFirstWithdrawal) {
     const minRequired = settings.minReferralsForWithdrawal ?? 3
     const mode = settings.referralGateMode ?? 'block'
-    const delayHours = settings.referralGateDelayHours ?? 24
 
     const referralCount = user?.referralCode
       ? await db.user.count({ where: { referredBy: user.referralCode } })
@@ -188,14 +224,19 @@ export async function POST(req: NextRequest) {
   const netAmount = amount - fee
 
   // Determine if this withdrawal should be held due to the referral gate (delay mode)
-  const gateEnabled = !!settings?.enableReferralGate
+  // The hold only applies when: gate is enabled AND not first withdrawal AND delay mode AND
+  // the user has fewer than the required referrals.
   const gateMode = settings?.referralGateMode ?? 'block'
   const minRequired = settings?.minReferralsForWithdrawal ?? 3
   const delayHours = settings?.referralGateDelayHours ?? 24
   const referralCount = user?.referralCode
     ? await db.user.count({ where: { referredBy: user.referralCode } })
     : 0
-  const shouldHold = gateEnabled && gateMode === 'delay' && referralCount < minRequired
+  const shouldHold =
+    gateEnabled &&
+    !isFirstWithdrawal &&
+    gateMode === 'delay' &&
+    referralCount < minRequired
 
   // Compute the hold release time (used as the note + visible review ETA)
   const holdReleaseAt = shouldHold
