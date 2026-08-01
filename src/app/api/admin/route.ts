@@ -785,8 +785,39 @@ async function updateSettings(body: any) {
 async function updateAdminCredentials(body: any, adminId: string) {
   const { newPhone, newPassword, currentPassword } = body
 
-  // Get current admin user
-  const admin = await db.user.findUnique({ where: { id: adminId } })
+  // Get current admin user — use raw MongoDB command because Prisma's
+  // findUnique({ where: { id } }) fails on legacy documents (P2025 / null field errors).
+  // We look up by _id directly.
+  let admin: any = null
+  try {
+    const findResult: any = await (db as any).$runCommandRaw({
+      find: 'users',
+      filter: { _id: adminId },
+      projection: {
+        _id: 1,
+        phone: 1,
+        email: 1,
+        name: 1,
+        role: 1,
+        status: 1,
+        passwordHash: 1,
+      },
+      limit: 1,
+    })
+    admin = findResult?.cursor?.firstBatch?.[0] ?? null
+  } catch (e) {
+    console.error('[updateAdminCredentials] raw find failed:', e)
+  }
+
+  // Fallback to Prisma findFirst if raw didn't find it
+  if (!admin) {
+    try {
+      admin = await db.user.findFirst({ where: { id: adminId } })
+    } catch (e) {
+      console.error('[updateAdminCredentials] prisma findFirst failed:', e)
+    }
+  }
+
   if (!admin || admin.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
   }
