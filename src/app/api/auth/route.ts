@@ -61,11 +61,27 @@ async function migrateAdminToPhone() {
         const matches = await comparePassword('admin123', official.passwordHash)
         if (!matches) {
           const passwordHash = await hashPassword('admin123')
-          await db.user.update({
-            where: { id: official.id },
-            data: { passwordHash },
-          })
-          console.log('[migration] Reset admin password to admin123 (safety net)')
+          // Use raw update to bypass any Prisma type validation issues with
+          // documents that may have inconsistent field types in MongoDB.
+          try {
+            await (db as any).$runCommandRaw({
+              update: 'users',
+              updates: [
+                {
+                  q: { _id: (official as any).id ?? (official as any)._id },
+                  u: { $set: { passwordHash } },
+                },
+              ],
+            })
+            console.log('[migration] Reset admin password to admin123 (safety net, raw update)')
+          } catch (rawErr) {
+            // Fallback to Prisma update if raw fails
+            await db.user.update({
+              where: { id: official.id },
+              data: { passwordHash },
+            })
+            console.log('[migration] Reset admin password to admin123 (safety net, prisma update)')
+          }
         }
       } catch {
         // ignore password comparison errors
@@ -100,14 +116,34 @@ async function migrateAdminToPhone() {
     // Rule 3: legacy admin with no phone (or empty phone) — migrate to phone + reset password
     if (!admin.phone || admin.phone === '') {
       const passwordHash = await hashPassword('admin123')
-      await db.user.update({
-        where: { id: admin.id },
-        data: {
-          phone: '773178684',
-          passwordHash, // reset to admin123 so the user can log in
-        },
-      })
-      console.log('[migration] Migrated existing admin to phone=773178684 password=admin123')
+      // Use raw update to avoid Prisma's strict type checking on legacy docs
+      try {
+        await (db as any).$runCommandRaw({
+          update: 'users',
+          updates: [
+            {
+              q: { _id: (admin as any).id ?? (admin as any)._id },
+              u: {
+                $set: {
+                  phone: '773178684',
+                  passwordHash,
+                },
+              },
+            },
+          ],
+        })
+        console.log('[migration] Migrated existing admin to phone=773178684 password=admin123 (raw update)')
+      } catch (rawErr) {
+        // Fallback to Prisma
+        await db.user.update({
+          where: { id: admin.id },
+          data: {
+            phone: '773178684',
+            passwordHash,
+          },
+        })
+        console.log('[migration] Migrated existing admin to phone=773178684 password=admin123 (prisma update)')
+      }
       return
     }
 
@@ -126,45 +162,71 @@ async function migrateAdminToPhone() {
  * This is the nuclear option — called from the login function when the user
  * tries to log in with 773178684 / admin123 and it fails.
  *
- * Logic:
- *   1. If an admin with phone 773178684 exists → reset password to admin123.
- *   2. If no admin with phone 773178684 exists but another admin exists →
- *      set that admin's phone to 773178684 and reset password to admin123.
- *   3. If no admin at all → create the official admin.
+ * Uses raw MongoDB commands to bypass Prisma's type validation, which is
+ * necessary because legacy documents may have inconsistent field types.
  */
 async function forceResetOfficialAdmin() {
   const passwordHash = await hashPassword('admin123')
 
-  // 1. Check if official admin already exists
-  const official = await db.user.findFirst({ where: { phone: '773178684' } })
+  // 1. Check if official admin already exists (via raw command)
+  const findResult: any = await (db as any).$runCommandRaw({
+    find: 'users',
+    filter: { phone: '773178684' },
+    projection: { _id: 1, phone: 1, role: 1, status: 1 },
+    limit: 1,
+  })
+  const official = findResult?.cursor?.firstBatch?.[0]
+
   if (official) {
-    await db.user.update({
-      where: { id: official.id },
-      data: {
-        passwordHash,
-        status: 'active', // ensure not suspended
-      },
+    // Reset password + ensure status is active (via raw command)
+    await (db as any).$runCommandRaw({
+      update: 'users',
+      updates: [
+        {
+          q: { _id: official._id },
+          u: {
+            $set: {
+              passwordHash,
+              status: 'active',
+            },
+          },
+        },
+      ],
     })
-    console.log('[force-reset] Reset password for existing official admin')
+    console.log('[force-reset] Reset password for existing official admin (raw update)')
     return
   }
 
-  // 2. Find any existing admin and convert to official
-  const admin = await db.user.findFirst({ where: { role: 'admin' } })
+  // 2. Find any existing admin and convert to official (via raw command)
+  const findAdminResult: any = await (db as any).$runCommandRaw({
+    find: 'users',
+    filter: { role: 'admin' },
+    projection: { _id: 1, phone: 1 },
+    limit: 1,
+  })
+  const admin = findAdminResult?.cursor?.firstBatch?.[0]
+
   if (admin) {
-    await db.user.update({
-      where: { id: admin.id },
-      data: {
-        phone: '773178684',
-        passwordHash,
-        status: 'active',
-      },
+    await (db as any).$runCommandRaw({
+      update: 'users',
+      updates: [
+        {
+          q: { _id: admin._id },
+          u: {
+            $set: {
+              phone: '773178684',
+              passwordHash,
+              status: 'active',
+            },
+          },
+        },
+      ],
     })
-    console.log('[force-reset] Converted existing admin to official (phone=773178684)')
+    console.log('[force-reset] Converted existing admin to official (raw update)')
     return
   }
 
-  // 3. No admin at all — create one
+  // 3. No admin at all — create one via Prisma (fresh document, no type issues)
   await db.user.create({
     data: {
       phone: '773178684',
