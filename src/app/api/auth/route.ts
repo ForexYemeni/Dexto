@@ -8,18 +8,95 @@ import {
 import { seedDatabase } from '@/lib/seed'
 import { notifyAdmins } from '@/lib/notify-admins'
 
-// Auto-seed on first request
+// Auto-seed on first request + admin migration (idempotent)
 let seeded = false
 async function ensureSeed() {
   if (seeded) return
   try {
     const userCount = await db.user.count()
     if (userCount === 0) {
+      // Fresh database — full seed (creates official admin 773178684 / admin123)
       await seedDatabase()
+    } else {
+      // Existing database — ensure the official admin account is set up
+      // for phone-based authentication (one-time migration from email→phone).
+      await migrateAdminToPhone()
     }
     seeded = true
   } catch (e) {
+    console.error('ensureSeed error:', e)
     seeded = true
+  }
+}
+
+/**
+ * One-time migration: convert the legacy email-based admin account to the
+ * phone-based official admin (phone: 773178684, password: admin123).
+ *
+ * Idempotency rules:
+ *   1. If an admin with phone "773178684" already exists → do nothing (already migrated).
+ *   2. If no admin exists at all → create the official admin.
+ *   3. If an admin exists with phone=null (legacy email-based) → set phone to
+ *      773178684 AND reset password to admin123.
+ *   4. If an admin exists with a DIFFERENT phone (user changed it) → do nothing,
+ *      we assume the user has intentionally customized the admin account.
+ *
+ * This runs on EVERY cold start until migration is complete, then becomes a no-op.
+ */
+async function migrateAdminToPhone() {
+  try {
+    // Rule 1: official admin already exists?
+    const official = await db.user.findUnique({ where: { phone: '773178684' } })
+    if (official) {
+      // Already migrated. Nothing to do.
+      return
+    }
+
+    // Find any existing admin account
+    const admin = await db.user.findFirst({ where: { role: 'admin' } })
+
+    if (!admin) {
+      // Rule 2: no admin at all — create the official one
+      const passwordHash = await hashPassword('admin123')
+      await db.user.create({
+        data: {
+          phone: '773178684',
+          email: 'admin@dexto.local',
+          name: 'Super Admin',
+          passwordHash,
+          referralCode: 'ADMIN2026',
+          role: 'admin',
+          status: 'active',
+          balance: 0,
+          language: 'ar',
+          theme: 'dark',
+        },
+      })
+      console.log('[migration] Created official admin: phone=773178684 password=admin123')
+      return
+    }
+
+    // Rule 3: legacy admin with no phone — migrate to phone + reset password
+    // Note: in MongoDB, the old admin document has phone=null/undefined because
+    // the old schema had phone as optional. The new schema requires it.
+    if (!admin.phone) {
+      const passwordHash = await hashPassword('admin123')
+      await db.user.update({
+        where: { id: admin.id },
+        data: {
+          phone: '773178684',
+          passwordHash, // reset to admin123 so the user can log in
+        },
+      })
+      console.log('[migration] Migrated existing admin to phone=773178684 password=admin123')
+      return
+    }
+
+    // Rule 4: admin has a different phone — leave it alone
+    // (user has intentionally customized the admin account)
+    console.log('[migration] Admin has custom phone, skipping migration')
+  } catch (e) {
+    console.error('migrateAdminToPhone error:', e)
   }
 }
 
