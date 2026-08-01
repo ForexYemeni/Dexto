@@ -946,33 +946,42 @@ async function toggleTask(taskId: string) {
  * Returns the user document (with .id normalized) or null.
  */
 async function findUserByIdFlexible(userId: string): Promise<any | null> {
+  console.log('[findUserByIdFlexible] looking for user:', userId)
+
   // Strategy 1: Prisma findFirst
   try {
     const user = await db.user.findFirst({ where: { id: userId } })
-    if (user) return user
-  } catch (e) {
-    // ignore
+    if (user) {
+      console.log('[findUserByIdFlexible] found via Prisma findFirst')
+      return user
+    }
+  } catch (e: any) {
+    console.log('[findUserByIdFlexible] Prisma findFirst threw:', e.message?.substring(0, 100))
   }
 
   // Strategy 2: raw MongoDB find with ObjectId conversion
   if (/^[0-9a-fA-F]{24}$/.test(userId)) {
     try {
       const { ObjectId } = await import('mongodb')
+      const objectId = new ObjectId(userId)
       const findResult: any = await (db as any).$runCommandRaw({
         find: 'users',
-        filter: { _id: new ObjectId(userId) },
+        filter: { _id: objectId },
         limit: 1,
       })
       const doc = findResult?.cursor?.firstBatch?.[0]
       if (doc) {
+        console.log('[findUserByIdFlexible] found via raw ObjectId find')
         // Normalize: add .id property if missing
         if (!doc.id && doc._id) {
           doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
         }
         return doc
+      } else {
+        console.log('[findUserByIdFlexible] raw ObjectId find returned no docs')
       }
-    } catch (e) {
-      // ignore
+    } catch (e: any) {
+      console.log('[findUserByIdFlexible] raw ObjectId find threw:', e.message?.substring(0, 100))
     }
   }
 
@@ -985,15 +994,17 @@ async function findUserByIdFlexible(userId: string): Promise<any | null> {
     })
     const doc = findResult?.cursor?.firstBatch?.[0]
     if (doc) {
+      console.log('[findUserByIdFlexible] found via raw string find')
       if (!doc.id && doc._id) {
         doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
       }
       return doc
     }
-  } catch (e) {
-    // ignore
+  } catch (e: any) {
+    console.log('[findUserByIdFlexible] raw string find threw:', e.message?.substring(0, 100))
   }
 
+  console.log('[findUserByIdFlexible] user NOT FOUND by any strategy')
   return null
 }
 
