@@ -36,14 +36,14 @@ export function AdminView() {
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Admin nav tabs */}
-      <div className="glass-strong rounded-2xl p-2 overflow-x-auto scrollbar-hide">
-        <div className="flex gap-1 min-w-max">
+      {/* Admin nav tabs — wraps on multiple lines so all tabs are always visible */}
+      <div className="glass-strong rounded-2xl p-2">
+        <div className="flex flex-wrap gap-1.5">
           {nav.map((item) => (
             <button
               key={item.key}
               onClick={() => setSection(item.key)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
                 section === item.key
                   ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
                   : 'text-white/60 hover:bg-white/5'
