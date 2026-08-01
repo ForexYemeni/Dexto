@@ -785,38 +785,9 @@ async function updateSettings(body: any) {
 async function updateAdminCredentials(body: any, adminId: string) {
   const { newPhone, newPassword, currentPassword } = body
 
-  // Get current admin user — use raw MongoDB command because Prisma's
-  // findUnique({ where: { id } }) fails on legacy documents (P2025 / null field errors).
-  // We look up by _id directly.
-  let admin: any = null
-  try {
-    const findResult: any = await (db as any).$runCommandRaw({
-      find: 'users',
-      filter: { _id: adminId },
-      projection: {
-        _id: 1,
-        phone: 1,
-        email: 1,
-        name: 1,
-        role: 1,
-        status: 1,
-        passwordHash: 1,
-      },
-      limit: 1,
-    })
-    admin = findResult?.cursor?.firstBatch?.[0] ?? null
-  } catch (e) {
-    console.error('[updateAdminCredentials] raw find failed:', e)
-  }
-
-  // Fallback to Prisma findFirst if raw didn't find it
-  if (!admin) {
-    try {
-      admin = await db.user.findFirst({ where: { id: adminId } })
-    } catch (e) {
-      console.error('[updateAdminCredentials] prisma findFirst failed:', e)
-    }
-  }
+  // Get current admin user — use the flexible lookup helper that handles
+  // both ObjectId and string _id in MongoDB.
+  const admin = await findUserByIdFlexible(adminId)
 
   if (!admin || admin.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
@@ -834,7 +805,6 @@ async function updateAdminCredentials(body: any, adminId: string) {
   }
 
   const updateData: any = {}
-  const rawUpdate: any = {}
 
   // Update phone if provided (primary login identifier now)
   if (newPhone && String(newPhone).trim() !== '') {
@@ -851,10 +821,8 @@ async function updateAdminCredentials(body: any, adminId: string) {
       return NextResponse.json({ error: 'phone_already_used' }, { status: 400 })
     }
     updateData.phone = normalizedPhone
-    rawUpdate.phone = normalizedPhone
     // Also update the placeholder email to keep it unique and consistent
     updateData.email = `admin_${normalizedPhone}@dexto.local`
-    rawUpdate.email = `admin_${normalizedPhone}@dexto.local`
   }
 
   // Update password if provided
@@ -863,33 +831,17 @@ async function updateAdminCredentials(body: any, adminId: string) {
       return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
     }
     // Hash the new password - completely replaces old hash
-    const passwordHash = await hashPassword(newPassword)
-    updateData.passwordHash = passwordHash
-    rawUpdate.passwordHash = passwordHash
+    updateData.passwordHash = await hashPassword(newPassword)
   }
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: 'no_changes' }, { status: 400 })
   }
 
-  // Update admin user via raw MongoDB command to avoid P2025 (legacy id issues)
-  try {
-    await (db as any).$runCommandRaw({
-      update: 'users',
-      updates: [
-        {
-          q: { _id: (admin as any).id ?? (admin as any)._id },
-          u: { $set: rawUpdate },
-        },
-      ],
-    })
-  } catch (rawErr) {
-    console.error('[updateAdminCredentials] raw update failed, trying Prisma:', rawErr)
-    // Fallback to Prisma
-    await db.user.update({
-      where: { id: adminId },
-      data: updateData,
-    })
+  // Update admin user via the flexible update helper (handles ObjectId)
+  const updated = await updateUserRaw(adminId, updateData)
+  if (!updated) {
+    return NextResponse.json({ error: 'update_failed' }, { status: 500 })
   }
 
   // Log the security event
@@ -988,6 +940,112 @@ async function toggleTask(taskId: string) {
   return NextResponse.json({ success: true })
 }
 
+/**
+ * Helper: find a user by id, trying multiple strategies to handle legacy
+ * MongoDB documents (ObjectId vs string _id, Prisma type validation issues).
+ * Returns the user document (with .id normalized) or null.
+ */
+async function findUserByIdFlexible(userId: string): Promise<any | null> {
+  // Strategy 1: Prisma findFirst
+  try {
+    const user = await db.user.findFirst({ where: { id: userId } })
+    if (user) return user
+  } catch (e) {
+    // ignore
+  }
+
+  // Strategy 2: raw MongoDB find with ObjectId conversion
+  if (/^[0-9a-fA-F]{24}$/.test(userId)) {
+    try {
+      const { ObjectId } = await import('mongodb')
+      const findResult: any = await (db as any).$runCommandRaw({
+        find: 'users',
+        filter: { _id: new ObjectId(userId) },
+        limit: 1,
+      })
+      const doc = findResult?.cursor?.firstBatch?.[0]
+      if (doc) {
+        // Normalize: add .id property if missing
+        if (!doc.id && doc._id) {
+          doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
+        }
+        return doc
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Strategy 3: raw MongoDB find with string _id
+  try {
+    const findResult: any = await (db as any).$runCommandRaw({
+      find: 'users',
+      filter: { _id: userId },
+      limit: 1,
+    })
+    const doc = findResult?.cursor?.firstBatch?.[0]
+    if (doc) {
+      if (!doc.id && doc._id) {
+        doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
+      }
+      return doc
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return null
+}
+
+/**
+ * Helper: update a user by id using raw MongoDB command (handles ObjectId).
+ * Returns true if the update affected at least one document.
+ */
+async function updateUserRaw(userId: string, updateData: any): Promise<boolean> {
+  // Try raw update with ObjectId first
+  if (/^[0-9a-fA-F]{24}$/.test(userId)) {
+    try {
+      const { ObjectId } = await import('mongodb')
+      const result: any = await (db as any).$runCommandRaw({
+        update: 'users',
+        updates: [
+          {
+            q: { _id: new ObjectId(userId) },
+            u: { $set: updateData },
+          },
+        ],
+      })
+      if (result?.nModified > 0 || result?.n > 0) return true
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Try raw update with string _id
+  try {
+    const result: any = await (db as any).$runCommandRaw({
+      update: 'users',
+      updates: [
+        {
+          q: { _id: userId },
+          u: { $set: updateData },
+        },
+      ],
+    })
+    if (result?.nModified > 0 || result?.n > 0) return true
+  } catch (e) {
+    // ignore
+  }
+
+  // Fallback to Prisma
+  try {
+    await db.user.update({ where: { id: userId }, data: updateData })
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 // =====================================================
 // ===== Additional Admins Management (multi-admin) =====
 // =====================================================
@@ -1081,15 +1139,15 @@ async function resetAdminPassword(body: any, requesterId: string) {
   if (newPassword.length < 6) {
     return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
   }
-  const target = await db.user.findUnique({ where: { id: adminId } })
+  const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
   }
   const passwordHash = await hashPassword(newPassword)
-  await db.user.update({
-    where: { id: adminId },
-    data: { passwordHash },
-  })
+  const updated = await updateUserRaw(adminId, { passwordHash })
+  if (!updated) {
+    return NextResponse.json({ error: 'update_failed' }, { status: 500 })
+  }
   await db.securityLog.create({
     data: {
       userId: requesterId,
@@ -1110,7 +1168,7 @@ async function deleteAdmin(body: any, requesterId: string, _requesterRole: strin
   if (adminId === requesterId) {
     return NextResponse.json({ error: 'cannot_delete_self' }, { status: 400 })
   }
-  const target = await db.user.findUnique({ where: { id: adminId } })
+  const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
   }
@@ -1119,11 +1177,10 @@ async function deleteAdmin(body: any, requesterId: string, _requesterRole: strin
     return NextResponse.json({ error: 'cannot_delete_primary_admin' }, { status: 400 })
   }
   // Downgrade to a regular user rather than hard-delete to preserve historical references.
-  // (Use the existing delete_user flow if a hard delete is really needed.)
-  await db.user.update({
-    where: { id: adminId },
-    data: { role: 'user' },
-  })
+  const updated = await updateUserRaw(adminId, { role: 'user' })
+  if (!updated) {
+    return NextResponse.json({ error: 'update_failed' }, { status: 500 })
+  }
   await db.securityLog.create({
     data: {
       userId: requesterId,
@@ -1144,7 +1201,7 @@ async function toggleAdminStatus(body: any, requesterId: string) {
   if (adminId === requesterId) {
     return NextResponse.json({ error: 'cannot_suspend_self' }, { status: 400 })
   }
-  const target = await db.user.findUnique({ where: { id: adminId } })
+  const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
   }
@@ -1152,10 +1209,10 @@ async function toggleAdminStatus(body: any, requesterId: string) {
     return NextResponse.json({ error: 'cannot_modify_primary_admin' }, { status: 400 })
   }
   const newStatus = target.status === 'active' ? 'suspended' : 'active'
-  await db.user.update({
-    where: { id: adminId },
-    data: { status: newStatus },
-  })
+  const updated = await updateUserRaw(adminId, { status: newStatus })
+  if (!updated) {
+    return NextResponse.json({ error: 'update_failed' }, { status: 500 })
+  }
   await db.securityLog.create({
     data: {
       userId: requesterId,
