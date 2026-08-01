@@ -944,11 +944,15 @@ async function toggleTask(taskId: string) {
  * Helper: find a user by id, trying multiple strategies to handle legacy
  * MongoDB documents (ObjectId vs string _id, Prisma type validation issues).
  * Returns the user document (with .id normalized) or null.
+ *
+ * Note: the `mongodb` npm package is not installed (Prisma uses its own
+ * driver internally). We use MongoDB extended JSON syntax ($oid) to
+ * match ObjectId values in raw commands.
  */
 async function findUserByIdFlexible(userId: string): Promise<any | null> {
   console.log('[findUserByIdFlexible] looking for user:', userId)
 
-  // Strategy 1: Prisma findFirst
+  // Strategy 1: Prisma findFirst (works for most documents)
   try {
     const user = await db.user.findFirst({ where: { id: userId } })
     if (user) {
@@ -959,33 +963,33 @@ async function findUserByIdFlexible(userId: string): Promise<any | null> {
     console.log('[findUserByIdFlexible] Prisma findFirst threw:', e.message?.substring(0, 100))
   }
 
-  // Strategy 2: raw MongoDB find with ObjectId conversion
+  // Strategy 2: raw MongoDB find using $oid extended JSON syntax
+  // (for documents where _id is a 24-char hex ObjectId)
   if (/^[0-9a-fA-F]{24}$/.test(userId)) {
     try {
-      const { ObjectId } = await import('mongodb')
-      const objectId = new ObjectId(userId)
+      // $runCommandRaw supports extended JSON: { _id: { $oid: "..." } }
       const findResult: any = await (db as any).$runCommandRaw({
         find: 'users',
-        filter: { _id: objectId },
+        filter: { _id: { $oid: userId } },
         limit: 1,
       })
       const doc = findResult?.cursor?.firstBatch?.[0]
       if (doc) {
-        console.log('[findUserByIdFlexible] found via raw ObjectId find')
+        console.log('[findUserByIdFlexible] found via raw $oid find')
         // Normalize: add .id property if missing
         if (!doc.id && doc._id) {
-          doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
+          doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString?.() ?? String(doc._id)
         }
         return doc
       } else {
-        console.log('[findUserByIdFlexible] raw ObjectId find returned no docs')
+        console.log('[findUserByIdFlexible] raw $oid find returned no docs')
       }
     } catch (e: any) {
-      console.log('[findUserByIdFlexible] raw ObjectId find threw:', e.message?.substring(0, 100))
+      console.log('[findUserByIdFlexible] raw $oid find threw:', e.message?.substring(0, 150))
     }
   }
 
-  // Strategy 3: raw MongoDB find with string _id
+  // Strategy 3: raw MongoDB find with string _id (for non-ObjectId documents)
   try {
     const findResult: any = await (db as any).$runCommandRaw({
       find: 'users',
@@ -996,7 +1000,7 @@ async function findUserByIdFlexible(userId: string): Promise<any | null> {
     if (doc) {
       console.log('[findUserByIdFlexible] found via raw string find')
       if (!doc.id && doc._id) {
-        doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString()
+        doc.id = typeof doc._id === 'string' ? doc._id : doc._id.toString?.() ?? String(doc._id)
       }
       return doc
     }
@@ -1011,28 +1015,32 @@ async function findUserByIdFlexible(userId: string): Promise<any | null> {
 /**
  * Helper: update a user by id using raw MongoDB command (handles ObjectId).
  * Returns true if the update affected at least one document.
+ *
+ * Uses $oid extended JSON syntax to match ObjectId values.
  */
 async function updateUserRaw(userId: string, updateData: any): Promise<boolean> {
-  // Try raw update with ObjectId first
+  // Strategy 1: raw update with $oid (for 24-char hex ObjectId)
   if (/^[0-9a-fA-F]{24}$/.test(userId)) {
     try {
-      const { ObjectId } = await import('mongodb')
       const result: any = await (db as any).$runCommandRaw({
         update: 'users',
         updates: [
           {
-            q: { _id: new ObjectId(userId) },
+            q: { _id: { $oid: userId } },
             u: { $set: updateData },
           },
         ],
       })
-      if (result?.nModified > 0 || result?.n > 0) return true
-    } catch (e) {
-      // ignore
+      if (result?.nModified > 0 || result?.n > 0) {
+        console.log('[updateUserRaw] updated via $oid')
+        return true
+      }
+    } catch (e: any) {
+      console.log('[updateUserRaw] $oid update threw:', e.message?.substring(0, 150))
     }
   }
 
-  // Try raw update with string _id
+  // Strategy 2: raw update with string _id
   try {
     const result: any = await (db as any).$runCommandRaw({
       update: 'users',
@@ -1043,16 +1051,21 @@ async function updateUserRaw(userId: string, updateData: any): Promise<boolean> 
         },
       ],
     })
-    if (result?.nModified > 0 || result?.n > 0) return true
-  } catch (e) {
-    // ignore
+    if (result?.nModified > 0 || result?.n > 0) {
+      console.log('[updateUserRaw] updated via string _id')
+      return true
+    }
+  } catch (e: any) {
+    console.log('[updateUserRaw] string update threw:', e.message?.substring(0, 100))
   }
 
-  // Fallback to Prisma
+  // Strategy 3: Prisma fallback
   try {
     await db.user.update({ where: { id: userId }, data: updateData })
+    console.log('[updateUserRaw] updated via Prisma')
     return true
-  } catch (e) {
+  } catch (e: any) {
+    console.log('[updateUserRaw] Prisma update threw:', e.message?.substring(0, 100))
     return false
   }
 }
