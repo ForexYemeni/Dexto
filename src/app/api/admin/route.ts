@@ -975,7 +975,8 @@ async function createAdmin(body: any, creatorId: string) {
   if (!isValidPhone(normalizedPhone)) {
     return NextResponse.json({ error: 'invalid_phone' }, { status: 400 })
   }
-  const existing = await db.user.findUnique({ where: { phone: normalizedPhone } })
+  // Use findFirst (not findUnique) — MongoDB may not have a unique index on `phone`.
+  const existing = await db.user.findFirst({ where: { phone: normalizedPhone } })
   if (existing) {
     return NextResponse.json({ error: 'phone_already_used' }, { status: 409 })
   }

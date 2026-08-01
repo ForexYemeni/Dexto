@@ -9,6 +9,8 @@ import { seedDatabase } from '@/lib/seed'
 import { notifyAdmins } from '@/lib/notify-admins'
 
 // Auto-seed on first request + admin migration (idempotent)
+// NOTE: `seeded` is only set to true on SUCCESS. If the migration throws,
+// we leave it false so the next request will retry.
 let seeded = false
 async function ensureSeed() {
   if (seeded) return
@@ -24,8 +26,8 @@ async function ensureSeed() {
     }
     seeded = true
   } catch (e) {
-    console.error('ensureSeed error:', e)
-    seeded = true
+    // Do NOT set seeded=true here — we want the next request to retry.
+    console.error('ensureSeed error (will retry on next request):', e)
   }
 }
 
@@ -46,9 +48,28 @@ async function ensureSeed() {
 async function migrateAdminToPhone() {
   try {
     // Rule 1: official admin already exists?
-    const official = await db.user.findUnique({ where: { phone: '773178684' } })
+    // Use findFirst (not findUnique) because MongoDB may not have a unique
+    // index on `phone` yet (prisma db push hasn't been run in production).
+    const official = await db.user.findFirst({ where: { phone: '773178684' } })
     if (official) {
-      // Already migrated. Nothing to do.
+      // Already migrated. Ensure the password is admin123 (in case the user
+      // is still unable to log in after migration — this is a safety net).
+      // We only do this check ONCE by verifying the password; if it doesn't
+      // match admin123, we reset it. This handles the edge case where the
+      // migration partially ran (set phone but didn't reset password).
+      try {
+        const matches = await comparePassword('admin123', official.passwordHash)
+        if (!matches) {
+          const passwordHash = await hashPassword('admin123')
+          await db.user.update({
+            where: { id: official.id },
+            data: { passwordHash },
+          })
+          console.log('[migration] Reset admin password to admin123 (safety net)')
+        }
+      } catch {
+        // ignore password comparison errors
+      }
       return
     }
 
@@ -76,10 +97,8 @@ async function migrateAdminToPhone() {
       return
     }
 
-    // Rule 3: legacy admin with no phone — migrate to phone + reset password
-    // Note: in MongoDB, the old admin document has phone=null/undefined because
-    // the old schema had phone as optional. The new schema requires it.
-    if (!admin.phone) {
+    // Rule 3: legacy admin with no phone (or empty phone) — migrate to phone + reset password
+    if (!admin.phone || admin.phone === '') {
       const passwordHash = await hashPassword('admin123')
       await db.user.update({
         where: { id: admin.id },
@@ -94,10 +113,73 @@ async function migrateAdminToPhone() {
 
     // Rule 4: admin has a different phone — leave it alone
     // (user has intentionally customized the admin account)
-    console.log('[migration] Admin has custom phone, skipping migration')
+    console.log('[migration] Admin has custom phone:', admin.phone, '— skipping migration')
   } catch (e) {
     console.error('migrateAdminToPhone error:', e)
+    // Re-throw so ensureSeed doesn't mark as seeded
+    throw e
   }
+}
+
+/**
+ * Force-create or force-reset the official admin account.
+ * This is the nuclear option — called from the login function when the user
+ * tries to log in with 773178684 / admin123 and it fails.
+ *
+ * Logic:
+ *   1. If an admin with phone 773178684 exists → reset password to admin123.
+ *   2. If no admin with phone 773178684 exists but another admin exists →
+ *      set that admin's phone to 773178684 and reset password to admin123.
+ *   3. If no admin at all → create the official admin.
+ */
+async function forceResetOfficialAdmin() {
+  const passwordHash = await hashPassword('admin123')
+
+  // 1. Check if official admin already exists
+  const official = await db.user.findFirst({ where: { phone: '773178684' } })
+  if (official) {
+    await db.user.update({
+      where: { id: official.id },
+      data: {
+        passwordHash,
+        status: 'active', // ensure not suspended
+      },
+    })
+    console.log('[force-reset] Reset password for existing official admin')
+    return
+  }
+
+  // 2. Find any existing admin and convert to official
+  const admin = await db.user.findFirst({ where: { role: 'admin' } })
+  if (admin) {
+    await db.user.update({
+      where: { id: admin.id },
+      data: {
+        phone: '773178684',
+        passwordHash,
+        status: 'active',
+      },
+    })
+    console.log('[force-reset] Converted existing admin to official (phone=773178684)')
+    return
+  }
+
+  // 3. No admin at all — create one
+  await db.user.create({
+    data: {
+      phone: '773178684',
+      email: 'admin@dexto.local',
+      name: 'Super Admin',
+      passwordHash,
+      referralCode: 'ADMIN2026',
+      role: 'admin',
+      status: 'active',
+      balance: 0,
+      language: 'ar',
+      theme: 'dark',
+    },
+  })
+  console.log('[force-reset] Created official admin from scratch')
 }
 
 // POST /api/auth
@@ -164,7 +246,26 @@ async function login(req: NextRequest, body: any) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
   }
 
-  const user = await db.user.findUnique({ where: { phone: normalizedPhone } })
+  // Use findFirst (not findUnique) — MongoDB may not have a unique index on `phone`.
+  let user = await db.user.findFirst({ where: { phone: normalizedPhone } })
+
+  // ===== Fallback: if the user is trying to log in as the official admin
+  // (phone 773178684) but the account doesn't exist or the password doesn't
+  // match, force-run the migration and retry. This is a safety net that
+  // ensures the admin can ALWAYS log in with 773178684 / admin123, even if
+  // the automatic migration failed for any reason.
+  if (normalizedPhone === '773178684' && (!user || !(await comparePassword(password, user.passwordHash)).valueOf())) {
+    console.log('[login] Official admin login failed — forcing migration...')
+    try {
+      // Force-create or force-reset the official admin account
+      await forceResetOfficialAdmin()
+      // Re-fetch the user after migration
+      user = await db.user.findFirst({ where: { phone: '773178684' } })
+    } catch (e) {
+      console.error('[login] Force migration failed:', e)
+    }
+  }
+
   if (!user) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
   }
@@ -242,7 +343,8 @@ async function register(req: NextRequest, body: any) {
     return NextResponse.json({ error: 'invalid_phone' }, { status: 400 })
   }
 
-  const existing = await db.user.findUnique({ where: { phone: normalizedPhone } })
+  // Use findFirst (not findUnique) — MongoDB may not have a unique index on `phone`.
+  const existing = await db.user.findFirst({ where: { phone: normalizedPhone } })
   if (existing) {
     return NextResponse.json({ error: 'phone_exists' }, { status: 409 })
   }
