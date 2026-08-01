@@ -202,6 +202,8 @@ export async function POST(req: NextRequest) {
       })
 
       // 2. Create fresh admin via raw command (bypass Prisma validation)
+      // IMPORTANT: MongoDB stores Date fields as ISODate objects, NOT strings.
+      // We must use the $date operator to ensure proper Date type.
       const passwordHash = await hashPassword('admin123')
       const insertResult: any = await (db as any).$runCommandRaw({
         insert: 'users',
@@ -222,8 +224,9 @@ export async function POST(req: NextRequest) {
             referralProfit: 0,
             language: 'ar',
             theme: 'dark',
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            // Use MongoDB extended JSON $date to ensure proper Date type
+            createdAt: { $date: new Date().toISOString() },
+            updatedAt: { $date: new Date().toISOString() },
           },
         ],
       })
@@ -252,6 +255,57 @@ export async function POST(req: NextRequest) {
       } else {
         result.steps.push({ step: 'verify_password', ok: false, error: 'Admin not found after create' })
       }
+    } else if (action === 'fix_dates') {
+      // Fix any user documents that have string dates instead of MongoDB Date objects.
+      // This happens when documents were created via raw $runCommandRaw with JS Date objects
+      // (which $runCommandRaw serializes as strings, not as MongoDB Date type).
+      //
+      // We find all users, check if createdAt is a string, and if so convert it to a proper Date.
+      const findResult: any = await (db as any).$runCommandRaw({
+        find: 'users',
+        projection: { _id: 1, createdAt: 1, updatedAt: 1 },
+        limit: 100,
+      })
+      const users = findResult?.cursor?.firstBatch ?? []
+      result.steps.push({ step: 'find_users', ok: true, count: users.length })
+
+      let fixed = 0
+      for (const u of users) {
+        const createdAt = u.createdAt
+        const updatedAt = u.updatedAt
+        const needsFix =
+          (createdAt && typeof createdAt === 'string') ||
+          (updatedAt && typeof updatedAt === 'string')
+
+        if (needsFix) {
+          try {
+            const updateResult: any = await (db as any).$runCommandRaw({
+              update: 'users',
+              updates: [
+                {
+                  q: { _id: u._id },
+                  u: {
+                    $set: {
+                      createdAt: typeof createdAt === 'string' ? { $date: createdAt } : createdAt,
+                      updatedAt: typeof updatedAt === 'string' ? { $date: updatedAt } : updatedAt,
+                    },
+                  },
+                },
+              ],
+            })
+            if (updateResult?.nModified > 0 || updateResult?.n > 0) {
+              fixed++
+            }
+          } catch (e: any) {
+            result.steps.push({
+              step: `fix_user_${u._id}`,
+              ok: false,
+              error: e.message.substring(0, 200),
+            })
+          }
+        }
+      }
+      result.steps.push({ step: 'fix_dates', ok: true, fixed })
     } else if (action === 'list_all') {
       // List ALL users via raw command (bypass Prisma)
       const findResult: any = await (db as any).$runCommandRaw({
@@ -275,7 +329,7 @@ export async function POST(req: NextRequest) {
         })),
       })
     } else {
-      return NextResponse.json({ error: 'invalid_action', validActions: ['fix_null_phones', 'force_create', 'list_all'] }, { status: 400 })
+      return NextResponse.json({ error: 'invalid_action', validActions: ['fix_null_phones', 'force_create', 'fix_dates', 'list_all'] }, { status: 400 })
     }
   } catch (e: any) {
     result.steps.push({
