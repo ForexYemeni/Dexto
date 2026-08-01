@@ -104,9 +104,11 @@ export default function Home() {
   // Render current view
   const renderView = () => {
     // Admin views - only accessible to admins
+    // The full AdminView (with all tabs including Admin Management) is shown
+    // when the user navigates to 'admin' view. This is the default admin landing.
     if (user?.role === 'admin') {
       switch (view) {
-        case 'admin': return <AdminDashboard />
+        case 'admin': return <AdminView />
         case 'admin_users': return <AdminUsers />
         case 'admin_plans': return <AdminPlans />
         case 'admin_payments': return <AdminPayments />
@@ -116,7 +118,7 @@ export default function Home() {
         case 'admin_settings': return <AdminSettings />
         case 'admin_logs': return <AdminLogs />
         case 'notifications': return <NotificationsView />
-        default: return <AdminDashboard />
+        default: return <AdminView />
       }
     }
 
