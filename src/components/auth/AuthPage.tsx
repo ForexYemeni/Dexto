@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, Mail, Lock, User, Gift, ShieldCheck, Sparkles, TrendingUp, Globe, Moon, Sun, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Bitcoin } from 'lucide-react'
+import { Eye, EyeOff, Phone, Lock, User, Gift, ShieldCheck, Sparkles, TrendingUp, Globe, Moon, Sun, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Bitcoin } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Field } from '@/components/shared/Field'
 
@@ -23,7 +23,7 @@ export default function AuthPage() {
   const [forgotSent, setForgotSent] = useState(false)
   const [form, setForm] = useState({
     name: '',
-    email: '',
+    phone: '',
     password: '',
     referralCode: '',
     agreeToTerms: false,
@@ -63,12 +63,14 @@ export default function AuthPage() {
     const e: Record<string, string> = {}
     if (mode === 'register' && !form.name) e.name = t('name')
     if (mode !== 'forgot' && !form.password) e.password = t('password')
-    if (mode === 'forgot' && !form.email) e.email = t('email')
-    if (mode === 'login' && !form.email) e.email = t('email')
+    if (mode === 'login' && !form.phone) e.phone = t('phone')
     if (mode === 'register') {
-      if (!form.email) e.email = t('email')
+      if (!form.phone) e.phone = t('phone')
       if (!form.agreeToTerms) e.agreeToTerms = t('mustAgreeTerms')
       if (form.password.length < 6) e.password = t('error')
+      // Validate phone: 6-15 digits after stripping non-digits
+      const digits = (form.phone || '').replace(/[^0-9]/g, '')
+      if (form.phone && !/^\d{6,15}$/.test(digits)) e.phone = t('invalidPhone')
     }
     if (mode === 'reset') {
       if (!form.password) e.password = t('password')
@@ -84,12 +86,12 @@ export default function AuthPage() {
 
     setLoading(true)
     try {
-      // Handle forgot password
+      // Handle forgot password (legacy email-based; phone users should contact admin)
       if (mode === 'forgot') {
         const res = await fetch('/api/auth/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: form.email }),
+          body: JSON.stringify({ email: form.phone }),
         })
         const data = await res.json()
 
@@ -167,16 +169,16 @@ export default function AuthPage() {
         return
       }
 
-      // Handle login / register
+      // Handle login / register (phone-based)
       const action = mode === 'login' ? 'login' : 'register'
       const payload: any = { action }
       if (mode === 'login') {
-        payload.email = form.email
+        payload.phone = form.phone
         payload.password = form.password
       } else if (mode === 'register') {
         Object.assign(payload, {
           name: form.name,
-          email: form.email,
+          phone: form.phone,
           password: form.password,
           referralCode: form.referralCode,
           agreeToTerms: form.agreeToTerms,
@@ -195,13 +197,15 @@ export default function AuthPage() {
         const errorKey = data.error || 'error'
         let msg = errorKey
         if (errorKey === 'invalid_credentials') msg = t('invalidCredentials')
-        else if (errorKey === 'email_exists') msg = t('emailExists')
+        else if (errorKey === 'phone_exists') msg = t('phoneExists')
+        else if (errorKey === 'invalid_phone') msg = t('invalidPhone')
         else if (errorKey === 'password_mismatch') msg = t('passwordMismatch')
         else if (errorKey === 'must_agree_terms') msg = t('mustAgreeTerms')
         else if (errorKey === 'missing_fields') msg = t('error')
         else if (errorKey === 'account_suspended') msg = t('accessDenied')
         else if (errorKey === 'password_too_short') msg = t('error')
         else if (errorKey === 'invalid_referral_code') msg = t('error')
+        else if (errorKey === 'email_exists') msg = t('phoneExists') // legacy fallback
 
         toast({
           variant: 'destructive',
@@ -323,15 +327,15 @@ export default function AuthPage() {
               />
             )}
 
-            {/* Email field - show for login, register, forgot (NOT reset) */}
+            {/* Phone field - show for login, register, forgot (NOT reset) */}
             {mode !== 'reset' && (
               <Field
-                icon={<Mail className="w-4 h-4" />}
-                placeholder={t('email')}
-                value={form.email}
-                onChange={(v) => setForm({ ...form, email: v })}
-                error={errors.email}
-                type="email"
+                icon={<Phone className="w-4 h-4" />}
+                placeholder={mode === 'forgot' ? (locale === 'ar' ? 'رقم الهاتف أو البريد' : 'Phone or Email') : t('phone')}
+                value={form.phone}
+                onChange={(v) => setForm({ ...form, phone: v })}
+                error={errors.phone}
+                type="tel"
                 isRTL={isRTL}
               />
             )}

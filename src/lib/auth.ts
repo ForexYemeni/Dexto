@@ -8,7 +8,8 @@ const COOKIE_NAME = 'cmip_token'
 
 export interface JwtPayload {
   userId: string
-  email: string
+  phone: string
+  email?: string | null
   role: string
 }
 
@@ -65,4 +66,22 @@ export function generateReferralCode(name: string): string {
   const base = name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase().padEnd(4, 'X')
   const random = Math.random().toString(36).slice(2, 8).toUpperCase()
   return `${base}${random}`
+}
+
+/**
+ * Normalize a phone number for storage/lookup.
+ * Strips everything except digits, so "777 123 456" and "+967 777 123 456" both become "967777123456".
+ * Returns the digit-only string.
+ */
+export function normalizePhone(input: string): string {
+  return (input || '').replace(/[^\d]/g, '')
+}
+
+/**
+ * Validate that a phone number looks reasonable.
+ * Accepts 6-15 digits (no leading +, no spaces).
+ */
+export function isValidPhone(input: string): boolean {
+  const digits = normalizePhone(input)
+  return /^\d{6,15}$/.test(digits)
 }

@@ -14,10 +14,10 @@ export function AdminSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Admin credentials state
+  // Admin credentials state (phone-based authentication)
   const [credForm, setCredForm] = useState({
     currentPassword: '',
-    newEmail: '',
+    newPhone: '',
     newPassword: '',
   })
   const [savingCred, setSavingCred] = useState(false)
@@ -56,11 +56,11 @@ export function AdminSettings() {
       })
       return
     }
-    if (!credForm.newEmail && !credForm.newPassword) {
+    if (!credForm.newPhone && !credForm.newPassword) {
       toast({
         variant: 'destructive',
         title: t('error'),
-        description: locale === 'ar' ? 'يرجى إدخال بريد جديد أو كلمة مرور جديدة' : 'Please enter new email or new password',
+        description: locale === 'ar' ? 'يرجى إدخال رقم جديد أو كلمة مرور جديدة' : 'Please enter new phone or new password',
       })
       return
     }
@@ -73,7 +73,7 @@ export function AdminSettings() {
         body: JSON.stringify({
           action: 'update_admin_credentials',
           currentPassword: credForm.currentPassword,
-          newEmail: credForm.newEmail,
+          newPhone: credForm.newPhone,
           newPassword: credForm.newPassword,
         }),
       })
@@ -82,7 +82,8 @@ export function AdminSettings() {
         const errMap: Record<string, string> = {
           current_password_wrong: locale === 'ar' ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect',
           current_password_required: locale === 'ar' ? 'كلمة المرور الحالية مطلوبة' : 'Current password is required',
-          email_already_used: locale === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already in use',
+          phone_already_used: locale === 'ar' ? 'رقم الهاتف مستخدم بالفعل' : 'Phone number already in use',
+          invalid_phone: locale === 'ar' ? 'رقم الهاتف غير صالح' : 'Invalid phone number',
           password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)' : 'Password too short (min 6 chars)',
           no_changes: locale === 'ar' ? 'لا توجد تغييرات' : 'No changes to apply',
         }
@@ -421,19 +422,22 @@ export function AdminSettings() {
             />
           </div>
 
-          {/* New email */}
+          {/* New phone */}
           <div>
             <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
               <Mail className="w-3 h-3" />
-              {locale === 'ar' ? 'البريد الإلكتروني الجديد' : 'New Email'}
+              {locale === 'ar' ? 'رقم الهاتف الجديد' : 'New Phone'}
             </label>
             <input
-              type="email"
-              value={credForm.newEmail}
-              onChange={(e) => setCredForm({ ...credForm, newEmail: e.target.value })}
-              placeholder={locale === 'ar' ? 'البريد الجديد (اتركه فارغاً لعدم التغيير)' : 'New email (leave empty to keep current)'}
+              type="tel"
+              value={credForm.newPhone}
+              onChange={(e) => setCredForm({ ...credForm, newPhone: e.target.value })}
+              placeholder={locale === 'ar' ? 'الرقم الجديد (اتركه فارغاً لعدم التغيير)' : 'New phone (leave empty to keep current)'}
               className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
             />
+            <p className="text-[10px] text-white/40 mt-1">
+              {locale === 'ar' ? '6-15 رقماً (بدون مسافات أو +)' : '6-15 digits (no spaces or +)'}
+            </p>
           </div>
 
           {/* New password */}
@@ -459,8 +463,8 @@ export function AdminSettings() {
             <ShieldAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <p className="text-[11px] text-white/60 leading-relaxed">
               {locale === 'ar'
-                ? 'تحذير: سيتم استبدال البريد وكلمة المرور القديمة نهائياً. بعد الحفظ سيتم تسجيل خروجك تلقائياً ويجب تسجيل الدخول بالبيانات الجديدة.'
-                : 'Warning: Old email and password will be permanently replaced. After saving, you will be automatically logged out and must login with the new credentials.'}
+                ? 'تحذير: سيتم استبدال رقم الهاتف وكلمة المرور القديمة نهائياً. بعد الحفظ سيتم تسجيل خروجك تلقائياً ويجب تسجيل الدخول بالبيانات الجديدة.'
+                : 'Warning: Old phone and password will be permanently replaced. After saving, you will be automatically logged out and must login with the new credentials.'}
             </p>
           </div>
 

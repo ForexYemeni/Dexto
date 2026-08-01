@@ -157,7 +157,7 @@ export function AdminUsers() {
                         </div>
                         <div>
                           <p className="text-xs font-medium text-white">{u.name}</p>
-                          <p className="text-[10px] text-white/40">{u.email}</p>
+                          <p className="text-[10px] text-white/40 font-mono">{u.phone ? `+${u.phone}` : (u.email || '—')}</p>
                         </div>
                       </div>
                     </td>
@@ -319,7 +319,9 @@ export function AdminUsers() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{deletingUser.name}</p>
-                    <p className="text-[10px] text-white/40 truncate">{deletingUser.email}</p>
+                    <p className="text-[10px] text-white/40 truncate font-mono">
+                      {deletingUser.phone ? `+${deletingUser.phone}` : (deletingUser.email || '—')}
+                    </p>
                   </div>
                   <div className="text-end">
                     <p className="text-[10px] text-white/40">{t('balance')}</p>

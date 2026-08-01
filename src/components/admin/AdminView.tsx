@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Pickaxe, ArrowDownToLine, ArrowUpFromLine,
   Settings, Wallet, LifeBuoy, ShieldCheck, Activity, ChevronRight,
-  ChevronLeft, TrendingUp, DollarSign, AlertCircle,
+  ChevronLeft, TrendingUp, DollarSign, AlertCircle, ShieldAlert,
 } from 'lucide-react'
 import { AdminDashboard } from './AdminDashboard'
 import { AdminUsers } from './AdminUsers'
@@ -16,6 +16,7 @@ import { AdminWallets } from './AdminWallets'
 import { AdminTickets } from './AdminTickets'
 import { AdminSettings } from './AdminSettings'
 import { AdminLogs } from './AdminLogs'
+import { AdminAdmins } from './AdminAdmins'
 
 export function AdminView() {
   const { t, locale, isRTL } = useI18n()
@@ -24,6 +25,7 @@ export function AdminView() {
   const nav = [
     { key: 'dashboard', label: t('adminDashboard'), icon: <LayoutDashboard className="w-4 h-4" /> },
     { key: 'users', label: t('userManagement'), icon: <Users className="w-4 h-4" /> },
+    { key: 'admins', label: t('adminManagement'), icon: <ShieldAlert className="w-4 h-4" /> },
     { key: 'plans', label: t('miningManagement'), icon: <Pickaxe className="w-4 h-4" /> },
     { key: 'payments', label: t('paymentManagement'), icon: <DollarSign className="w-4 h-4" /> },
     { key: 'wallets', label: t('networks'), icon: <Wallet className="w-4 h-4" /> },
@@ -63,6 +65,7 @@ export function AdminView() {
       >
         {section === 'dashboard' && <AdminDashboard />}
         {section === 'users' && <AdminUsers />}
+        {section === 'admins' && <AdminAdmins />}
         {section === 'plans' && <AdminPlans />}
         {section === 'payments' && <AdminPayments />}
         {section === 'wallets' && <AdminWallets />}

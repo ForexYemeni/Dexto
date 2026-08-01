@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword, comparePassword, signToken, setAuthCookie, generateReferralCode, getCurrentUser, clearAuthCookie } from '@/lib/auth'
+import {
+  hashPassword, comparePassword, signToken, setAuthCookie,
+  generateReferralCode, getCurrentUser, clearAuthCookie,
+  normalizePhone, isValidPhone,
+} from '@/lib/auth'
 import { seedDatabase } from '@/lib/seed'
 import { notifyAdmins } from '@/lib/notify-admins'
 
@@ -52,6 +56,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     user: {
       id: user.id,
+      // Primary identifier is now the phone number
+      phone: user.phone,
       email: user.email,
       name: user.name,
       role: user.role,
@@ -65,19 +71,23 @@ export async function GET(req: NextRequest) {
       theme: user.theme,
       referralCode: user.referralCode,
       status: user.status,
-      phone: user.phone,
       avatar: user.avatar,
     },
   })
 }
 
 async function login(req: NextRequest, body: any) {
-  const { email, password } = body
-  if (!email || !password) {
+  const { phone, password } = body
+  if (!phone || !password) {
     return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
   }
 
-  const user = await db.user.findUnique({ where: { email: email.toLowerCase() } })
+  const normalizedPhone = normalizePhone(phone)
+  if (!isValidPhone(normalizedPhone)) {
+    return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
+  }
+
+  const user = await db.user.findUnique({ where: { phone: normalizedPhone } })
   if (!user) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
   }
@@ -91,7 +101,12 @@ async function login(req: NextRequest, body: any) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
   }
 
-  const token = signToken({ userId: user.id, email: user.email, role: user.role })
+  const token = signToken({
+    userId: user.id,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+  })
   await setAuthCookie(token)
 
   await db.user.update({
@@ -114,6 +129,7 @@ async function login(req: NextRequest, body: any) {
   return NextResponse.json({
     user: {
       id: user.id,
+      phone: user.phone,
       email: user.email,
       name: user.name,
       role: user.role,
@@ -132,9 +148,9 @@ async function login(req: NextRequest, body: any) {
 }
 
 async function register(req: NextRequest, body: any) {
-  const { name, email, password, referralCode, agreeToTerms } = body
+  const { name, phone, password, referralCode, agreeToTerms } = body
 
-  if (!name || !email || !password) {
+  if (!name || !phone || !password) {
     return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
   }
   if (!agreeToTerms) {
@@ -144,9 +160,14 @@ async function register(req: NextRequest, body: any) {
     return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
   }
 
-  const existing = await db.user.findUnique({ where: { email: email.toLowerCase() } })
+  const normalizedPhone = normalizePhone(phone)
+  if (!isValidPhone(normalizedPhone)) {
+    return NextResponse.json({ error: 'invalid_phone' }, { status: 400 })
+  }
+
+  const existing = await db.user.findUnique({ where: { phone: normalizedPhone } })
   if (existing) {
-    return NextResponse.json({ error: 'email_exists' }, { status: 409 })
+    return NextResponse.json({ error: 'phone_exists' }, { status: 409 })
   }
 
   // Find referrer if code provided
@@ -162,9 +183,9 @@ async function register(req: NextRequest, body: any) {
 
   const user = await db.user.create({
     data: {
-      email: email.toLowerCase(),
+      phone: normalizedPhone,
+      email: null, // email no longer required
       name,
-      phone: null,
       passwordHash,
       referralCode: newReferralCode,
       referredBy: referralCode || null,
@@ -193,8 +214,8 @@ async function register(req: NextRequest, body: any) {
     type: 'system',
     title: 'New User Registered',
     titleAr: 'تسجيل مستخدم جديد',
-    message: `New user: ${name} (${email})${referralCode ? ` via referral: ${referralCode}` : ''}`,
-    messageAr: `مستخدم جديد: ${name} (${email})${referralCode ? ` عبر إحالة: ${referralCode}` : ''}`,
+    message: `New user: ${name} (phone: ${normalizedPhone})${referralCode ? ` via referral: ${referralCode}` : ''}`,
+    messageAr: `مستخدم جديد: ${name} (رقم: ${normalizedPhone})${referralCode ? ` عبر إحالة: ${referralCode}` : ''}`,
   })
 
   await db.activityLog.create({
@@ -206,12 +227,18 @@ async function register(req: NextRequest, body: any) {
     },
   })
 
-  const token = signToken({ userId: user.id, email: user.email, role: user.role })
+  const token = signToken({
+    userId: user.id,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+  })
   await setAuthCookie(token)
 
   return NextResponse.json({
     user: {
       id: user.id,
+      phone: user.phone,
       email: user.email,
       name: user.name,
       role: user.role,

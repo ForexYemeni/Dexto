@@ -160,13 +160,15 @@ const TASKS = [
 export async function seedDatabase() {
   console.log('[seed] Starting database initialization...')
 
-  // 1. Create or update admin user
+  // 1. Create or update admin user — phone-based authentication
+  //    Official admin phone: 773178684 / password: admin123 (changeable from admin panel)
   let admin = await db.user.findFirst({ where: { role: 'admin' } })
   if (!admin) {
-    const passwordHash = await hashPassword('Admin@2026')
+    const passwordHash = await hashPassword('admin123')
     admin = await db.user.create({
       data: {
-        email: 'admin@cryptomining.io',
+        phone: '773178684',
+        email: 'admin@dexto.local', // optional legacy field
         name: 'Super Admin',
         passwordHash,
         referralCode: 'ADMIN2026',
@@ -177,7 +179,14 @@ export async function seedDatabase() {
         theme: 'dark',
       },
     })
-    console.log('[seed] Created admin user:', admin.email)
+    console.log('[seed] Created admin user with phone: 773178684')
+  } else if (!admin.phone) {
+    // Backfill phone on a previously-email-only admin so they can still log in
+    await db.user.update({
+      where: { id: admin.id },
+      data: { phone: '773178684' },
+    })
+    console.log('[seed] Backfilled admin phone: 773178684')
   }
 
   // 2. Create mining plans

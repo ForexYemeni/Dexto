@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   if (section === 'settings') return getSettings()
   if (section === 'security_logs') return getSecurityLogs(url)
   if (section === 'activity_logs') return getActivityLogs(url)
+  if (section === 'admins') return getAdmins()
 
   return NextResponse.json({ error: 'invalid_section' }, { status: 400 })
 }
@@ -71,6 +72,11 @@ export async function POST(req: NextRequest) {
     case 'toggle_task': return toggleTask(body.taskId)
     case 'update_settings': return updateSettings(body)
     case 'update_admin_credentials': return updateAdminCredentials(body, admin.userId)
+    // ===== Additional admins management =====
+    case 'create_admin': return createAdmin(body, admin.userId)
+    case 'reset_admin_password': return resetAdminPassword(body, admin.userId)
+    case 'delete_admin': return deleteAdmin(body, admin.userId, admin.role)
+    case 'toggle_admin_status': return toggleAdminStatus(body, admin.userId)
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 })
@@ -190,6 +196,7 @@ async function getUsers(url: URL) {
   if (search) {
     where.OR = [
       { name: { contains: search } },
+      { phone: { contains: search } },
       { email: { contains: search } },
       { referralCode: { contains: search } },
     ]
@@ -774,9 +781,9 @@ async function updateSettings(body: any) {
   return NextResponse.json({ success: true, settings: updated })
 }
 
-// Update admin email and/or password - completely replaces old credentials
+// Update admin phone and/or password - completely replaces old credentials
 async function updateAdminCredentials(body: any, adminId: string) {
-  const { newEmail, newPassword, currentPassword } = body
+  const { newPhone, newPassword, currentPassword } = body
 
   // Get current admin user
   const admin = await db.user.findUnique({ where: { id: adminId } })
@@ -797,17 +804,21 @@ async function updateAdminCredentials(body: any, adminId: string) {
 
   const updateData: any = {}
 
-  // Update email if provided
-  if (newEmail && newEmail.trim() !== '') {
-    const email = newEmail.toLowerCase().trim()
-    // Check if email is already used by another user
+  // Update phone if provided (primary login identifier now)
+  if (newPhone && String(newPhone).trim() !== '') {
+    const { normalizePhone, isValidPhone } = await import('@/lib/auth')
+    const normalizedPhone = normalizePhone(String(newPhone))
+    if (!isValidPhone(normalizedPhone)) {
+      return NextResponse.json({ error: 'invalid_phone' }, { status: 400 })
+    }
+    // Check if phone is already used by another user
     const existing = await db.user.findFirst({
-      where: { email, NOT: { id: adminId } },
+      where: { phone: normalizedPhone, NOT: { id: adminId } },
     })
     if (existing) {
-      return NextResponse.json({ error: 'email_already_used' }, { status: 400 })
+      return NextResponse.json({ error: 'phone_already_used' }, { status: 400 })
     }
-    updateData.email = email
+    updateData.phone = normalizedPhone
   }
 
   // Update password if provided
@@ -924,4 +935,177 @@ async function toggleTask(taskId: string) {
   await db.task.update({ where: { id: taskId }, data: { isActive: !task.isActive } })
   return NextResponse.json({ success: true })
 }
+
+// =====================================================
+// ===== Additional Admins Management (multi-admin) =====
+// =====================================================
+
+// GET section=admins — list all admin accounts (excluding passwordHash)
+async function getAdmins() {
+  const admins = await db.user.findMany({
+    where: { role: 'admin' },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      phone: true,
+      email: true,
+      name: true,
+      status: true,
+      language: true,
+      lastLoginAt: true,
+      createdAt: true,
+      referralCode: true,
+    },
+  })
+  return NextResponse.json({ admins })
+}
+
+// Create a new admin account — requires admin privileges.
+// Body: { name, phone, password }
+async function createAdmin(body: any, creatorId: string) {
+  const { name, phone, password } = body
+  if (!name || !phone || !password) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+  }
+  if (password.length < 6) {
+    return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
+  }
+  const { normalizePhone, isValidPhone, generateReferralCode } = await import('@/lib/auth')
+  const normalizedPhone = normalizePhone(String(phone))
+  if (!isValidPhone(normalizedPhone)) {
+    return NextResponse.json({ error: 'invalid_phone' }, { status: 400 })
+  }
+  const existing = await db.user.findUnique({ where: { phone: normalizedPhone } })
+  if (existing) {
+    return NextResponse.json({ error: 'phone_already_used' }, { status: 409 })
+  }
+  const passwordHash = await hashPassword(password)
+  const newAdmin = await db.user.create({
+    data: {
+      phone: normalizedPhone,
+      email: null,
+      name,
+      passwordHash,
+      referralCode: generateReferralCode(name),
+      role: 'admin',
+      status: 'active',
+      balance: 0,
+      language: 'ar',
+      theme: 'dark',
+    },
+  })
+  await db.securityLog.create({
+    data: {
+      userId: creatorId,
+      eventType: 'admin_created',
+      details: `Created admin ${newAdmin.name} (phone: ${newAdmin.phone})`,
+    },
+  })
+  return NextResponse.json({
+    success: true,
+    admin: {
+      id: newAdmin.id,
+      phone: newAdmin.phone,
+      name: newAdmin.name,
+      role: newAdmin.role,
+      status: newAdmin.status,
+    },
+  })
+}
+
+// Reset another admin's password (admin-only).
+// Body: { adminId, newPassword }
+async function resetAdminPassword(body: any, requesterId: string) {
+  const { adminId, newPassword } = body
+  if (!adminId || !newPassword) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+  }
+  if (newPassword.length < 6) {
+    return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
+  }
+  const target = await db.user.findUnique({ where: { id: adminId } })
+  if (!target || target.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  const passwordHash = await hashPassword(newPassword)
+  await db.user.update({
+    where: { id: adminId },
+    data: { passwordHash },
+  })
+  await db.securityLog.create({
+    data: {
+      userId: requesterId,
+      eventType: 'admin_password_reset',
+      details: `Reset password for admin ${target.name} (id: ${target.id})`,
+    },
+  })
+  return NextResponse.json({ success: true })
+}
+
+// Delete an admin account. The primary/seed admin cannot be deleted.
+// Body: { adminId }
+async function deleteAdmin(body: any, requesterId: string, _requesterRole: string) {
+  const { adminId } = body
+  if (!adminId) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+  }
+  if (adminId === requesterId) {
+    return NextResponse.json({ error: 'cannot_delete_self' }, { status: 400 })
+  }
+  const target = await db.user.findUnique({ where: { id: adminId } })
+  if (!target || target.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  // Protect the seed admin (phone 773178684) from deletion
+  if (target.phone === '773178684') {
+    return NextResponse.json({ error: 'cannot_delete_primary_admin' }, { status: 400 })
+  }
+  // Downgrade to a regular user rather than hard-delete to preserve historical references.
+  // (Use the existing delete_user flow if a hard delete is really needed.)
+  await db.user.update({
+    where: { id: adminId },
+    data: { role: 'user' },
+  })
+  await db.securityLog.create({
+    data: {
+      userId: requesterId,
+      eventType: 'admin_removed',
+      details: `Removed admin privileges from ${target.name} (id: ${target.id})`,
+    },
+  })
+  return NextResponse.json({ success: true })
+}
+
+// Suspend / activate an admin (cannot suspend the primary seed admin)
+// Body: { adminId }
+async function toggleAdminStatus(body: any, requesterId: string) {
+  const { adminId } = body
+  if (!adminId) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+  }
+  if (adminId === requesterId) {
+    return NextResponse.json({ error: 'cannot_suspend_self' }, { status: 400 })
+  }
+  const target = await db.user.findUnique({ where: { id: adminId } })
+  if (!target || target.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  if (target.phone === '773178684') {
+    return NextResponse.json({ error: 'cannot_modify_primary_admin' }, { status: 400 })
+  }
+  const newStatus = target.status === 'active' ? 'suspended' : 'active'
+  await db.user.update({
+    where: { id: adminId },
+    data: { status: newStatus },
+  })
+  await db.securityLog.create({
+    data: {
+      userId: requesterId,
+      eventType: 'admin_status_toggled',
+      details: `${target.name} status → ${newStatus}`,
+    },
+  })
+  return NextResponse.json({ success: true, status: newStatus })
+}
+
 

@@ -1,0 +1,540 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useI18n } from '@/hooks/use-i18n'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  ShieldCheck, UserPlus, Phone, KeyRound, Trash2, Power, Loader2,
+  X, CheckCircle2, Lock, Crown, AlertTriangle,
+} from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/time-utils'
+
+interface Admin {
+  id: string
+  phone: string
+  email: string | null
+  name: string
+  status: string
+  language: string
+  lastLoginAt: string | null
+  createdAt: string
+  referralCode: string
+}
+
+export function AdminAdmins() {
+  const { t, locale, isRTL } = useI18n()
+  const { toast } = useToast()
+  const [admins, setAdmins] = useState<Admin[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [resetTarget, setResetTarget] = useState<Admin | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '' })
+
+  const fetchAdmins = async () => {
+    try {
+      const res = await fetch('/api/admin?section=admins', { cache: 'no-store' })
+      const data = await res.json()
+      setAdmins(data.admins || [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchAdmins()
+  }, [])
+
+  const handleCreate = async () => {
+    if (!createForm.name || !createForm.phone || !createForm.password) {
+      toast({
+        variant: 'destructive',
+        title: '❌ ' + t('error'),
+        description: locale === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields',
+      })
+      return
+    }
+    if (createForm.password.length < 6) {
+      toast({
+        variant: 'destructive',
+        title: '❌ ' + t('error'),
+        description: locale === 'ar' ? 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)' : 'Password too short (min 6 chars)',
+      })
+      return
+    }
+    const digits = createForm.phone.replace(/[^0-9]/g, '')
+    if (!/^\d{6,15}$/.test(digits)) {
+      toast({
+        variant: 'destructive',
+        title: '❌ ' + t('error'),
+        description: t('invalidPhone'),
+      })
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_admin',
+          name: createForm.name,
+          phone: createForm.phone,
+          password: createForm.password,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          missing_fields: locale === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields',
+          password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً' : 'Password too short',
+          invalid_phone: t('invalidPhone'),
+          phone_already_used: t('phoneExists'),
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + t('adminCreated'),
+        description: locale === 'ar'
+          ? `تم إنشاء حساب مدير جديد برقم ${data.admin.phone}`
+          : `New admin account created with phone ${data.admin.phone}`,
+      })
+      setCreateForm({ name: '', phone: '', password: '' })
+      setShowCreateModal(false)
+      fetchAdmins()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetTarget || !newPassword) return
+    if (newPassword.length < 6) {
+      toast({
+        variant: 'destructive',
+        title: '❌ ' + t('error'),
+        description: locale === 'ar' ? 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)' : 'Password too short (min 6 chars)',
+      })
+      return
+    }
+    setResetting(true)
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset_admin_password',
+          adminId: resetTarget.id,
+          newPassword,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          missing_fields: locale === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields',
+          password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً' : 'Password too short',
+          admin_not_found: locale === 'ar' ? 'المدير غير موجود' : 'Admin not found',
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + t('adminPasswordReset'),
+        description: locale === 'ar'
+          ? `تم تغيير كلمة مرور ${resetTarget.name}`
+          : `Password changed for ${resetTarget.name}`,
+      })
+      setResetTarget(null)
+      setNewPassword('')
+      fetchAdmins()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  const handleRemoveAdmin = async (admin: Admin) => {
+    if (!confirm(
+      locale === 'ar'
+        ? `هل أنت متأكد من إزالة صلاحيات المدير من ${admin.name}؟`
+        : `Are you sure you want to remove admin privileges from ${admin.name}?`
+    )) return
+
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_admin', adminId: admin.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          cannot_delete_self: t('cannotDeleteSelf'),
+          cannot_delete_primary_admin: t('cannotDeletePrimaryAdmin'),
+          admin_not_found: locale === 'ar' ? 'المدير غير موجود' : 'Admin not found',
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + t('adminRemoved'),
+        description: locale === 'ar' ? `تمت إزالة صلاحيات ${admin.name}` : `Removed privileges from ${admin.name}`,
+      })
+      fetchAdmins()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
+  }
+
+  const handleToggleStatus = async (admin: Admin) => {
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_admin_status', adminId: admin.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          cannot_suspend_self: t('cannotSuspendSelf'),
+          cannot_modify_primary_admin: t('cannotModifyPrimaryAdmin'),
+          admin_not_found: locale === 'ar' ? 'المدير غير موجود' : 'Admin not found',
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + (data.status === 'active'
+          ? (locale === 'ar' ? 'تم تفعيل الحساب' : 'Account activated')
+          : (locale === 'ar' ? 'تم إيقاف الحساب' : 'Account suspended')),
+      })
+      fetchAdmins()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    }
+  }
+
+  if (loading) {
+    return <div className="h-64 glass rounded-2xl animate-pulse" />
+  }
+
+  return (
+    <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-blue-400" />
+            {t('adminManagement')}
+          </h2>
+          <p className="text-xs text-white/40 mt-1">
+            {locale === 'ar'
+              ? `${admins.length} مدير — يمكنك إضافة مدراء إضافيين أو إزالة صلاحياتهم`
+              : `${admins.length} admins — add additional admins or remove their privileges`}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold flex items-center gap-2 hover:scale-[1.02] transition-transform"
+        >
+          <UserPlus className="w-4 h-4" />
+          {t('addAdmin')}
+        </button>
+      </div>
+
+      {/* Admins grid */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {admins.map((admin) => {
+          const isPrimary = admin.phone === '773178684'
+          return (
+            <motion.div
+              key={admin.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`glass rounded-2xl p-5 relative overflow-hidden ${
+                isPrimary ? 'border-2 border-amber-500/40' : 'border border-white/10'
+              }`}
+            >
+              {isPrimary && (
+                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-500/20 blur-3xl" />
+              )}
+              <div className="relative">
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      isPrimary ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      {isPrimary ? <Crown className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        {admin.name}
+                        {isPrimary && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">
+                            {t('primaryAdmin')}
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-[10px] text-white/40 font-mono">+{admin.phone}</p>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    admin.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {admin.status === 'active' ? t('active') : t('inactive')}
+                  </span>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                  <div className="glass rounded-lg p-2">
+                    <p className="text-[10px] text-white/40">{locale === 'ar' ? 'آخر دخول' : 'Last login'}</p>
+                    <p className="text-white text-[11px]">
+                      {admin.lastLoginAt
+                        ? new Date(admin.lastLoginAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US')
+                        : (locale === 'ar' ? 'لم يسجل بعد' : 'Never')}
+                    </p>
+                  </div>
+                  <div className="glass rounded-lg p-2">
+                    <p className="text-[10px] text-white/40">{locale === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</p>
+                    <p className="text-white text-[11px]">
+                      {new Date(admin.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => { setResetTarget(admin); setNewPassword('') }}
+                    className="flex-1 min-w-[100px] py-2 rounded-lg glass text-white text-xs hover:bg-white/10 flex items-center justify-center gap-1"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {t('resetAdminPassword')}
+                  </button>
+                  {!isPrimary && (
+                    <>
+                      <button
+                        onClick={() => handleToggleStatus(admin)}
+                        className="py-2 px-3 rounded-lg glass text-white text-xs hover:bg-white/10"
+                        title={admin.status === 'active' ? (locale === 'ar' ? 'إيقاف' : 'Suspend') : (locale === 'ar' ? 'تفعيل' : 'Activate')}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveAdmin(admin)}
+                        className="py-2 px-3 rounded-lg glass text-red-400 hover:bg-red-500/10"
+                        title={t('removeAdmin')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {isPrimary && (
+                  <p className="text-[10px] text-amber-400/80 mt-2 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    {locale === 'ar'
+                      ? 'المدير الرئيسي محمي — لا يمكن حذفه أو إيقافه'
+                      : 'Primary admin is protected — cannot be deleted or suspended'}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+
+      {/* Create admin modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowCreateModal(false)}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-strong rounded-3xl p-6 w-full max-w-md"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-400" />
+                  {t('createAdmin')}
+                </h3>
+                <button onClick={() => setShowCreateModal(false)} className="text-white/40 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-white/60 mb-1.5 block">{t('adminName')}</label>
+                  <input
+                    type="text"
+                    value={createForm.name}
+                    onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                    placeholder={locale === 'ar' ? 'اسم المدير' : 'Admin name'}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    {t('adminPhone')}
+                  </label>
+                  <input
+                    type="tel"
+                    value={createForm.phone}
+                    onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                    placeholder="773178684"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-blue-500/50"
+                  />
+                  <p className="text-[10px] text-white/40 mt-1">
+                    {locale === 'ar' ? '6-15 رقماً (بدون مسافات أو +)' : '6-15 digits (no spaces or +)'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    {t('adminPassword')}
+                  </label>
+                  <input
+                    type="password"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                    placeholder={locale === 'ar' ? 'كلمة المرور (6 أحرف على الأقل)' : 'Password (min 6 chars)'}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowCreateModal(false)}
+                    className="flex-1 py-3 rounded-xl glass text-white text-sm font-medium hover:bg-white/10"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    onClick={handleCreate}
+                    disabled={creating}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    {t('createAdmin')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset password modal */}
+      <AnimatePresence>
+        {resetTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { setResetTarget(null); setNewPassword('') }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-strong rounded-3xl p-6 w-full max-w-md"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-400" />
+                  {t('resetAdminPassword')}
+                </h3>
+                <button onClick={() => { setResetTarget(null); setNewPassword('') }} className="text-white/40 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="glass rounded-xl p-3 bg-blue-500/5 border border-blue-500/20">
+                  <p className="text-xs text-white/80">
+                    {locale === 'ar' ? 'تغيير كلمة مرور:' : 'Resetting password for:'}{' '}
+                    <span className="font-bold text-white">{resetTarget.name}</span>
+                  </p>
+                  <p className="text-[10px] text-white/40 font-mono mt-1">+{resetTarget.phone}</p>
+                </div>
+
+                <div>
+                  <label className="text-xs text-white/60 mb-1.5 block">{t('newPasswordPlaceholder')}</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder={locale === 'ar' ? 'كلمة المرور الجديدة' : 'New password'}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setResetTarget(null); setNewPassword('') }}
+                    className="flex-1 py-3 rounded-xl glass text-white text-sm font-medium hover:bg-white/10"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    onClick={handleResetPassword}
+                    disabled={resetting || newPassword.length < 6}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                    {t('resetAdminPassword')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}

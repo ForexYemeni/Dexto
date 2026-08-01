@@ -5,7 +5,9 @@ import type { Locale } from './i18n'
 // ===== Auth Store (client-side) =====
 interface AuthUser {
   id: string
-  email: string
+  // Primary login identifier is now the phone number
+  phone: string
+  email?: string | null
   name: string
   role: 'user' | 'admin'
   balance: number

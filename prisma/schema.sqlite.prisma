@@ -14,9 +14,10 @@ datasource db {
 // ===== Users & Admins =====
 model User {
   id              String   @id @default(cuid())
-  email           String   @unique
+  // Authentication is now via PHONE NUMBER (no email required)
+  phone           String   @unique  // login identifier (digits only, e.g. "773178684")
+  email           String?           // optional, kept for backwards compatibility
   name            String
-  phone           String?
   passwordHash    String
   referralCode    String   @unique
   referredBy      String?  // referralCode of inviter
