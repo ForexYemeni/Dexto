@@ -349,22 +349,49 @@ async function login(req: NextRequest, body: any) {
   })
   await setAuthCookie(token)
 
-  await db.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date() },
-  })
+  // Update lastLoginAt via raw command to avoid Prisma's strict id matching
+  // (legacy MongoDB documents may have _id types that Prisma can't update by id)
+  try {
+    await (db as any).$runCommandRaw({
+      update: 'users',
+      updates: [
+        {
+          q: { _id: (user as any).id ?? (user as any)._id },
+          u: { $set: { lastLoginAt: { $date: new Date().toISOString() } } },
+        },
+      ],
+    })
+  } catch (rawErr) {
+    console.error('[login] Failed to update lastLoginAt:', rawErr)
+    // Don't fail the login just because we couldn't update the timestamp
+  }
 
-  await db.activityLog.create({
-    data: {
-      userId: user.id,
-      action: 'login',
-      ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
-      userAgent: req.headers.get('user-agent') || 'unknown',
-    },
-  })
+  // Create activity log via raw command (same reason)
+  try {
+    await (db as any).$runCommandRaw({
+      insert: 'activity_logs',
+      documents: [
+        {
+          userId: (user as any).id ?? (user as any)._id,
+          action: 'login',
+          ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
+          userAgent: req.headers.get('user-agent') || 'unknown',
+          createdAt: { $date: new Date().toISOString() },
+          updatedAt: { $date: new Date().toISOString() },
+        },
+      ],
+    })
+  } catch (rawErr) {
+    console.error('[login] Failed to create activity log:', rawErr)
+    // Don't fail the login
+  }
 
-  // Create daily login task completion
-  await createDailyLoginTask(user.id)
+  // Create daily login task completion (wrapped in try/catch to not fail login)
+  try {
+    await createDailyLoginTask(user.id)
+  } catch (e) {
+    console.error('[login] createDailyLoginTask failed (non-fatal):', e)
+  }
 
   return NextResponse.json({
     user: {
