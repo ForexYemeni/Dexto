@@ -803,6 +803,7 @@ async function updateAdminCredentials(body: any, adminId: string) {
   }
 
   const updateData: any = {}
+  const rawUpdate: any = {}
 
   // Update phone if provided (primary login identifier now)
   if (newPhone && String(newPhone).trim() !== '') {
@@ -819,6 +820,10 @@ async function updateAdminCredentials(body: any, adminId: string) {
       return NextResponse.json({ error: 'phone_already_used' }, { status: 400 })
     }
     updateData.phone = normalizedPhone
+    rawUpdate.phone = normalizedPhone
+    // Also update the placeholder email to keep it unique and consistent
+    updateData.email = `admin_${normalizedPhone}@dexto.local`
+    rawUpdate.email = `admin_${normalizedPhone}@dexto.local`
   }
 
   // Update password if provided
@@ -827,18 +832,34 @@ async function updateAdminCredentials(body: any, adminId: string) {
       return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
     }
     // Hash the new password - completely replaces old hash
-    updateData.passwordHash = await hashPassword(newPassword)
+    const passwordHash = await hashPassword(newPassword)
+    updateData.passwordHash = passwordHash
+    rawUpdate.passwordHash = passwordHash
   }
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: 'no_changes' }, { status: 400 })
   }
 
-  // Update admin user
-  await db.user.update({
-    where: { id: adminId },
-    data: updateData,
-  })
+  // Update admin user via raw MongoDB command to avoid P2025 (legacy id issues)
+  try {
+    await (db as any).$runCommandRaw({
+      update: 'users',
+      updates: [
+        {
+          q: { _id: (admin as any).id ?? (admin as any)._id },
+          u: { $set: rawUpdate },
+        },
+      ],
+    })
+  } catch (rawErr) {
+    console.error('[updateAdminCredentials] raw update failed, trying Prisma:', rawErr)
+    // Fallback to Prisma
+    await db.user.update({
+      where: { id: adminId },
+      data: updateData,
+    })
+  }
 
   // Log the security event
   await db.securityLog.create({
@@ -981,10 +1002,15 @@ async function createAdmin(body: any, creatorId: string) {
     return NextResponse.json({ error: 'phone_already_used' }, { status: 409 })
   }
   const passwordHash = await hashPassword(password)
+  // Generate a unique placeholder email to satisfy the legacy unique index
+  // on `email` in MongoDB. Without this, creating two users with email=null
+  // throws P2002 'Unique constraint failed on users_email_key'.
+  // The email is optional for login (phone is the primary identifier).
+  const placeholderEmail = `admin_${normalizedPhone}@dexto.local`
   const newAdmin = await db.user.create({
     data: {
       phone: normalizedPhone,
-      email: null,
+      email: placeholderEmail,
       name,
       passwordHash,
       referralCode: generateReferralCode(name),

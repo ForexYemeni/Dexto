@@ -449,10 +449,16 @@ async function register(req: NextRequest, body: any) {
   const passwordHash = await hashPassword(password)
   const newReferralCode = generateReferralCode(name)
 
+  // Generate a unique placeholder email to satisfy the legacy unique index
+  // on `email` in MongoDB. Without this, creating two users with email=null
+  // throws P2002 'Unique constraint failed on users_email_key'.
+  // Format: user_<phone>@dexto.local — guaranteed unique because phone is unique.
+  const placeholderEmail = `user_${normalizedPhone}@dexto.local`
+
   const user = await db.user.create({
     data: {
       phone: normalizedPhone,
-      email: null, // email no longer required
+      email: placeholderEmail,
       name,
       passwordHash,
       referralCode: newReferralCode,
