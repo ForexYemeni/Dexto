@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ShieldCheck, UserPlus, Phone, KeyRound, Trash2, Power, Loader2,
+  ShieldCheck, ShieldAlert, UserPlus, Phone, KeyRound, Trash2, Power, Loader2,
   X, CheckCircle2, Lock, Crown, AlertTriangle,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
