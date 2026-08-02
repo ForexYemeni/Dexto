@@ -1089,15 +1089,29 @@ async function getAdmins() {
       lastLoginAt: true,
       createdAt: true,
       referralCode: true,
+      allowedTabs: true,
     },
   })
   return NextResponse.json({ admins })
 }
 
 // Create a new admin account — requires admin privileges.
-// Body: { name, phone, password }
+// Body: { name, phone, password, allowedTabs? }
+// allowedTabs is a comma-separated string of tab keys the sub-admin can access.
+// If null/empty, the sub-admin has full access (same as primary admin).
+// Only the primary admin (phone 773178684) can create new admins.
 async function createAdmin(body: any, creatorId: string) {
-  const { name, phone, password } = body
+  const { name, phone, password, allowedTabs } = body
+
+  // Permission check: only the primary admin can create new admins
+  const creator = await findUserByIdFlexible(creatorId)
+  if (!creator) {
+    return NextResponse.json({ error: 'creator_not_found' }, { status: 404 })
+  }
+  if (creator.phone !== '773178684') {
+    return NextResponse.json({ error: 'only_primary_admin_can_create' }, { status: 403 })
+  }
+
   if (!name || !phone || !password) {
     return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
   }
@@ -1120,6 +1134,15 @@ async function createAdmin(body: any, creatorId: string) {
   // throws P2002 'Unique constraint failed on users_email_key'.
   // The email is optional for login (phone is the primary identifier).
   const placeholderEmail = `admin_${normalizedPhone}@dexto.local`
+
+  // Normalize allowedTabs: if it's an array, join it; if empty/null, store null (full access)
+  let normalizedAllowedTabs: string | null = null
+  if (Array.isArray(allowedTabs) && allowedTabs.length > 0) {
+    normalizedAllowedTabs = allowedTabs.filter(Boolean).join(',')
+  } else if (typeof allowedTabs === 'string' && allowedTabs.trim() !== '') {
+    normalizedAllowedTabs = allowedTabs.trim()
+  }
+
   const newAdmin = await db.user.create({
     data: {
       phone: normalizedPhone,
@@ -1132,13 +1155,14 @@ async function createAdmin(body: any, creatorId: string) {
       balance: 0,
       language: 'ar',
       theme: 'dark',
+      allowedTabs: normalizedAllowedTabs,
     },
   })
   await db.securityLog.create({
     data: {
       userId: creatorId,
       eventType: 'admin_created',
-      details: `Created admin ${newAdmin.name} (phone: ${newAdmin.phone})`,
+      details: `Created admin ${newAdmin.name} (phone: ${newAdmin.phone})${normalizedAllowedTabs ? ` with tabs: ${normalizedAllowedTabs}` : ' with full access'}`,
     },
   })
   return NextResponse.json({
@@ -1149,12 +1173,17 @@ async function createAdmin(body: any, creatorId: string) {
       name: newAdmin.name,
       role: newAdmin.role,
       status: newAdmin.status,
+      allowedTabs: newAdmin.allowedTabs,
     },
   })
 }
 
 // Reset another admin's password (admin-only).
 // Body: { adminId, newPassword }
+// Permission rules:
+//   - Primary admin (773178684) can reset any admin's password
+//   - Sub-admins can only reset their OWN password (handled via update_admin_credentials)
+//   - Sub-admins CANNOT reset other admins' passwords
 async function resetAdminPassword(body: any, requesterId: string) {
   const { adminId, newPassword } = body
   if (!adminId || !newPassword) {
@@ -1163,6 +1192,17 @@ async function resetAdminPassword(body: any, requesterId: string) {
   if (newPassword.length < 6) {
     return NextResponse.json({ error: 'password_too_short' }, { status: 400 })
   }
+
+  // Get the requester to check if they're the primary admin
+  const requester = await findUserByIdFlexible(requesterId)
+  if (!requester || requester.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  // Only the primary admin can reset other admins' passwords
+  if (requester.phone !== '773178684') {
+    return NextResponse.json({ error: 'only_primary_admin_can_reset' }, { status: 403 })
+  }
+
   const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
@@ -1184,6 +1224,9 @@ async function resetAdminPassword(body: any, requesterId: string) {
 
 // Delete an admin account. The primary/seed admin cannot be deleted.
 // Body: { adminId }
+// Permission rules:
+//   - Primary admin (773178684) can delete any sub-admin
+//   - Sub-admins CANNOT delete other admins (including other sub-admins)
 async function deleteAdmin(body: any, requesterId: string, _requesterRole: string) {
   const { adminId } = body
   if (!adminId) {
@@ -1192,6 +1235,16 @@ async function deleteAdmin(body: any, requesterId: string, _requesterRole: strin
   if (adminId === requesterId) {
     return NextResponse.json({ error: 'cannot_delete_self' }, { status: 400 })
   }
+
+  // Get the requester to check if they're the primary admin
+  const requester = await findUserByIdFlexible(requesterId)
+  if (!requester || requester.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  if (requester.phone !== '773178684') {
+    return NextResponse.json({ error: 'only_primary_admin_can_delete' }, { status: 403 })
+  }
+
   const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
@@ -1217,6 +1270,9 @@ async function deleteAdmin(body: any, requesterId: string, _requesterRole: strin
 
 // Suspend / activate an admin (cannot suspend the primary seed admin)
 // Body: { adminId }
+// Permission rules:
+//   - Primary admin (773178684) can suspend/activate any sub-admin
+//   - Sub-admins CANNOT suspend/activate other admins (including other sub-admins)
 async function toggleAdminStatus(body: any, requesterId: string) {
   const { adminId } = body
   if (!adminId) {
@@ -1225,6 +1281,16 @@ async function toggleAdminStatus(body: any, requesterId: string) {
   if (adminId === requesterId) {
     return NextResponse.json({ error: 'cannot_suspend_self' }, { status: 400 })
   }
+
+  // Get the requester to check if they're the primary admin
+  const requester = await findUserByIdFlexible(requesterId)
+  if (!requester || requester.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  if (requester.phone !== '773178684') {
+    return NextResponse.json({ error: 'only_primary_admin_can_toggle' }, { status: 403 })
+  }
+
   const target = await findUserByIdFlexible(adminId)
   if (!target || target.role !== 'admin') {
     return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })

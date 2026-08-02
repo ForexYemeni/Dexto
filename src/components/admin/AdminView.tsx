@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
+import { useAuthStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Pickaxe, ArrowDownToLine, ArrowUpFromLine,
@@ -18,21 +19,49 @@ import { AdminSettings } from './AdminSettings'
 import { AdminLogs } from './AdminLogs'
 import { AdminAdmins } from './AdminAdmins'
 
+// All available admin tabs (in display order)
+const ALL_TABS = [
+  { key: 'dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+  { key: 'users', icon: <Users className="w-4 h-4" /> },
+  { key: 'admins', icon: <ShieldAlert className="w-4 h-4" /> },
+  { key: 'plans', icon: <Pickaxe className="w-4 h-4" /> },
+  { key: 'payments', icon: <DollarSign className="w-4 h-4" /> },
+  { key: 'wallets', icon: <Wallet className="w-4 h-4" /> },
+  { key: 'tickets', icon: <LifeBuoy className="w-4 h-4" /> },
+  { key: 'settings', icon: <Settings className="w-4 h-4" /> },
+  { key: 'logs', icon: <ShieldCheck className="w-4 h-4" /> },
+] as const
+
 export function AdminView() {
   const { t, locale, isRTL } = useI18n()
+  const { user } = useAuthStore()
   const [section, setSection] = useState('dashboard')
 
-  const nav = [
-    { key: 'dashboard', label: t('adminDashboard'), icon: <LayoutDashboard className="w-4 h-4" /> },
-    { key: 'users', label: t('userManagement'), icon: <Users className="w-4 h-4" /> },
-    { key: 'admins', label: t('adminManagement'), icon: <ShieldAlert className="w-4 h-4" /> },
-    { key: 'plans', label: t('miningManagement'), icon: <Pickaxe className="w-4 h-4" /> },
-    { key: 'payments', label: t('paymentManagement'), icon: <DollarSign className="w-4 h-4" /> },
-    { key: 'wallets', label: t('networks'), icon: <Wallet className="w-4 h-4" /> },
-    { key: 'tickets', label: t('supportTickets'), icon: <LifeBuoy className="w-4 h-4" /> },
-    { key: 'settings', label: t('platformSettings'), icon: <Settings className="w-4 h-4" /> },
-    { key: 'logs', label: t('securityLogs'), icon: <ShieldCheck className="w-4 h-4" /> },
-  ]
+  // Determine which tabs this admin can see.
+  // - Primary admin (phone 773178684) or allowedTabs=null/empty = ALL tabs
+  // - Sub-admin with allowedTabs="dashboard,users" = only those 2 tabs
+  const allowedTabsRaw = user?.allowedTabs
+  const isPrimaryAdmin = user?.phone === '773178684'
+  const hasFullAccess = isPrimaryAdmin || !allowedTabsRaw || allowedTabsRaw.trim() === ''
+  const allowedTabKeys = hasFullAccess
+    ? ALL_TABS.map((tab) => tab.key)
+    : allowedTabsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+
+  // Build the nav list — only include tabs the user is allowed to see
+  const nav = ALL_TABS
+    .filter((tab) => allowedTabKeys.includes(tab.key))
+    .map((tab) => ({
+      key: tab.key,
+      label: t(tabLabelKey(tab.key)),
+      icon: tab.icon,
+    }))
+
+  // If the current section is not in the allowed list, fall back to the first allowed tab
+  useEffect(() => {
+    if (nav.length > 0 && !nav.some((n) => n.key === section)) {
+      setSection(nav[0].key)
+    }
+  }, [nav, section])
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -56,6 +85,18 @@ export function AdminView() {
         </div>
       </div>
 
+      {/* Access restriction notice for sub-admins */}
+      {!hasFullAccess && (
+        <div className="glass rounded-xl p-3 bg-amber-500/5 border border-amber-500/20 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+          <p className="text-[11px] text-amber-400">
+            {locale === 'ar'
+              ? `أنت مدير فرعي — لديك صلاحية الوصول إلى ${nav.length} تبويبات فقط.`
+              : `You are a sub-admin — you have access to ${nav.length} tabs only.`}
+          </p>
+        </div>
+      )}
+
       {/* Section content */}
       <motion.div
         key={section}
@@ -75,4 +116,20 @@ export function AdminView() {
       </motion.div>
     </div>
   )
+}
+
+// Map tab keys to their i18n label keys
+function tabLabelKey(tabKey: string): any {
+  const map: Record<string, string> = {
+    dashboard: 'adminDashboard',
+    users: 'userManagement',
+    admins: 'adminManagement',
+    plans: 'miningManagement',
+    payments: 'paymentManagement',
+    wallets: 'networks',
+    tickets: 'supportTickets',
+    settings: 'platformSettings',
+    logs: 'securityLogs',
+  }
+  return map[tabKey] || tabKey
 }

@@ -10,6 +10,9 @@ interface AuthUser {
   email?: string | null
   name: string
   role: 'user' | 'admin'
+  // For sub-admins: comma-separated list of allowed admin tabs.
+  // NULL/empty = full access (primary admin behavior).
+  allowedTabs?: string | null
   balance: number
   language: Locale
   referralCode: string

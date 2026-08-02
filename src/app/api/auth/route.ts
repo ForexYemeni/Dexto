@@ -52,40 +52,9 @@ async function migrateAdminToPhone() {
     // index on `phone` yet (prisma db push hasn't been run in production).
     const official = await db.user.findFirst({ where: { phone: '773178684' } })
     if (official) {
-      // Already migrated. Ensure the password is admin123 (in case the user
-      // is still unable to log in after migration — this is a safety net).
-      // We only do this check ONCE by verifying the password; if it doesn't
-      // match admin123, we reset it. This handles the edge case where the
-      // migration partially ran (set phone but didn't reset password).
-      try {
-        const matches = await comparePassword('admin123', official.passwordHash)
-        if (!matches) {
-          const passwordHash = await hashPassword('admin123')
-          // Use raw update to bypass any Prisma type validation issues with
-          // documents that may have inconsistent field types in MongoDB.
-          try {
-            await (db as any).$runCommandRaw({
-              update: 'users',
-              updates: [
-                {
-                  q: { _id: (official as any).id ?? (official as any)._id },
-                  u: { $set: { passwordHash } },
-                },
-              ],
-            })
-            console.log('[migration] Reset admin password to admin123 (safety net, raw update)')
-          } catch (rawErr) {
-            // Fallback to Prisma update if raw fails
-            await db.user.update({
-              where: { id: official.id },
-              data: { passwordHash },
-            })
-            console.log('[migration] Reset admin password to admin123 (safety net, prisma update)')
-          }
-        }
-      } catch {
-        // ignore password comparison errors
-      }
+      // Already migrated. DO NOT touch the password — the admin may have
+      // changed it intentionally via the Admin Settings panel, and resetting
+      // it back to admin123 would lock them out of their new password.
       return
     }
 
@@ -282,6 +251,9 @@ export async function GET(req: NextRequest) {
       email: user.email,
       name: user.name,
       role: user.role,
+      // allowedTabs controls which admin tabs a sub-admin can see.
+      // NULL/empty = full access (primary admin). Comma-separated string otherwise.
+      allowedTabs: user.allowedTabs ?? null,
       balance: user.balance,
       totalInvested: user.totalInvested,
       totalProfit: user.totalProfit,
@@ -309,24 +281,13 @@ async function login(req: NextRequest, body: any) {
   }
 
   // Use findFirst (not findUnique) — MongoDB may not have a unique index on `phone`.
-  let user = await db.user.findFirst({ where: { phone: normalizedPhone } })
+  const user = await db.user.findFirst({ where: { phone: normalizedPhone } })
 
-  // ===== Fallback: if the user is trying to log in as the official admin
-  // (phone 773178684) but the account doesn't exist or the password doesn't
-  // match, force-run the migration and retry. This is a safety net that
-  // ensures the admin can ALWAYS log in with 773178684 / admin123, even if
-  // the automatic migration failed for any reason.
-  if (normalizedPhone === '773178684' && (!user || !(await comparePassword(password, user.passwordHash)).valueOf())) {
-    console.log('[login] Official admin login failed — forcing migration...')
-    try {
-      // Force-create or force-reset the official admin account
-      await forceResetOfficialAdmin()
-      // Re-fetch the user after migration
-      user = await db.user.findFirst({ where: { phone: '773178684' } })
-    } catch (e) {
-      console.error('[login] Force migration failed:', e)
-    }
-  }
+  // NOTE: We intentionally do NOT have a "force reset" fallback here.
+  // Previously, if login with 773178684 failed, we would force-reset the
+  // password to admin123. But this meant the primary admin could NEVER
+  // change their password — every failed login attempt would reset it.
+  // Now the password is only changed via the Admin Settings panel.
 
   if (!user) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
@@ -400,6 +361,7 @@ async function login(req: NextRequest, body: any) {
       email: user.email,
       name: user.name,
       role: user.role,
+      allowedTabs: user.allowedTabs ?? null,
       balance: user.balance,
       totalInvested: user.totalInvested,
       totalProfit: user.totalProfit,

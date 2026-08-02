@@ -20,6 +20,7 @@ interface Admin {
   lastLoginAt: string | null
   createdAt: string
   referralCode: string
+  allowedTabs?: string | null
 }
 
 export function AdminAdmins() {
@@ -32,7 +33,27 @@ export function AdminAdmins() {
   const [newPassword, setNewPassword] = useState('')
   const [creating, setCreating] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '' })
+  // allowedTabs: null = full access, string[] = restricted to those tabs only
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    phone: '',
+    password: '',
+    fullAccess: true,
+    allowedTabs: [] as string[],
+  })
+
+  // Available tabs for the access-control picker
+  const AVAILABLE_TABS = [
+    { key: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard' },
+    { key: 'users', labelAr: 'إدارة المستخدمين', labelEn: 'Users' },
+    { key: 'admins', labelAr: 'إدارة المدراء', labelEn: 'Admins' },
+    { key: 'plans', labelAr: 'إدارة التعدين', labelEn: 'Mining Plans' },
+    { key: 'payments', labelAr: 'إدارة المدفوعات', labelEn: 'Payments' },
+    { key: 'wallets', labelAr: 'الشبكات', labelEn: 'Networks' },
+    { key: 'tickets', labelAr: 'تذاكر الدعم', labelEn: 'Support Tickets' },
+    { key: 'settings', labelAr: 'الإعدادات', labelEn: 'Settings' },
+    { key: 'logs', labelAr: 'سجلات الأمان', labelEn: 'Security Logs' },
+  ]
 
   const fetchAdmins = async () => {
     try {
@@ -79,6 +100,15 @@ export function AdminAdmins() {
 
     setCreating(true)
     try {
+      // Build the allowedTabs payload:
+      // - If fullAccess is true → send null (primary-admin-like full access)
+      // - If fullAccess is false → send the array of selected tab keys
+      const allowedTabsPayload = createForm.fullAccess
+        ? null
+        : createForm.allowedTabs.length > 0
+          ? createForm.allowedTabs
+          : ['dashboard'] // if nothing selected, default to dashboard only
+
       const res = await fetch('/api/admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,6 +117,7 @@ export function AdminAdmins() {
           name: createForm.name,
           phone: createForm.phone,
           password: createForm.password,
+          allowedTabs: allowedTabsPayload,
         }),
       })
       const data = await res.json()
@@ -96,6 +127,7 @@ export function AdminAdmins() {
           password_too_short: locale === 'ar' ? 'كلمة المرور قصيرة جداً' : 'Password too short',
           invalid_phone: t('invalidPhone'),
           phone_already_used: t('phoneExists'),
+          only_primary_admin_can_create: locale === 'ar' ? 'فقط المدير الرئيسي يمكنه إنشاء مدراء جدد' : 'Only the primary admin can create new admins',
         }
         toast({
           variant: 'destructive',
@@ -111,7 +143,7 @@ export function AdminAdmins() {
           ? `تم إنشاء حساب مدير جديد برقم ${data.admin.phone}`
           : `New admin account created with phone ${data.admin.phone}`,
       })
-      setCreateForm({ name: '', phone: '', password: '' })
+      setCreateForm({ name: '', phone: '', password: '', fullAccess: true, allowedTabs: [] })
       setShowCreateModal(false)
       fetchAdmins()
     } catch (e) {
@@ -334,6 +366,33 @@ export function AdminAdmins() {
                   </div>
                 </div>
 
+                {/* Access level display */}
+                <div className="glass rounded-xl p-2 mb-3">
+                  {!admin.allowedTabs || admin.allowedTabs.trim() === '' ? (
+                    <p className="text-[10px] text-green-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      {locale === 'ar' ? 'صلاحية كاملة (جميع التبويبات)' : 'Full access (all tabs)'}
+                    </p>
+                  ) : (
+                    <div>
+                      <p className="text-[10px] text-amber-400 flex items-center gap-1 mb-1">
+                        <ShieldAlert className="w-3 h-3" />
+                        {locale === 'ar' ? `صلاحية محدودة (${admin.allowedTabs.split(',').length} تبويبات)` : `Limited access (${admin.allowedTabs.split(',').length} tabs)`}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {admin.allowedTabs.split(',').map((tab, i) => {
+                          const tabInfo = AVAILABLE_TABS.find((at) => at.key === tab.trim())
+                          return (
+                            <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-white/60">
+                              {tabInfo ? (locale === 'ar' ? tabInfo.labelAr : tabInfo.labelEn) : tab}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Actions */}
                 <div className="flex gap-2 flex-wrap">
                   <button
@@ -443,6 +502,81 @@ export function AdminAdmins() {
                     placeholder={locale === 'ar' ? 'كلمة المرور (6 أحرف على الأقل)' : 'Password (min 6 chars)'}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-blue-500/50"
                   />
+                </div>
+
+                {/* ===== Access Control: choose which tabs the sub-admin can see ===== */}
+                <div>
+                  <label className="text-xs text-white/60 mb-1.5 block flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    {locale === 'ar' ? 'الصلاحيات والتبويبات' : 'Access & Tabs'}
+                  </label>
+
+                  {/* Full access toggle */}
+                  <label className="flex items-center gap-2 text-white text-xs bg-blue-500/5 rounded-xl p-3 border border-blue-500/20 cursor-pointer mb-2">
+                    <input
+                      type="checkbox"
+                      checked={createForm.fullAccess}
+                      onChange={(e) => setCreateForm({ ...createForm, fullAccess: e.target.checked })}
+                      className="rounded"
+                    />
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                    <span>
+                      {locale === 'ar'
+                        ? 'صلاحية كاملة (جميع التبويبات — مثل المدير الرئيسي)'
+                        : 'Full access (all tabs — like primary admin)'}
+                    </span>
+                  </label>
+
+                  {/* Tab picker — only shown when fullAccess is false */}
+                  {!createForm.fullAccess && (
+                    <div className="glass rounded-xl p-3 border border-white/10">
+                      <p className="text-[10px] text-white/40 mb-2">
+                        {locale === 'ar'
+                          ? 'اختر التبويبات التي يمكن لهذا المدير الفرعي رؤيتها:'
+                          : 'Select which tabs this sub-admin can see:'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {AVAILABLE_TABS.map((tab) => {
+                          const checked = createForm.allowedTabs.includes(tab.key)
+                          return (
+                            <label
+                              key={tab.key}
+                              className={`flex items-center gap-1.5 text-[11px] p-2 rounded-lg cursor-pointer border transition-all ${
+                                checked
+                                  ? 'bg-blue-500/10 border-blue-500/40 text-white'
+                                  : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setCreateForm({
+                                      ...createForm,
+                                      allowedTabs: [...createForm.allowedTabs, tab.key],
+                                    })
+                                  } else {
+                                    setCreateForm({
+                                      ...createForm,
+                                      allowedTabs: createForm.allowedTabs.filter((k) => k !== tab.key),
+                                    })
+                                  }
+                                }}
+                                className="rounded"
+                              />
+                              {locale === 'ar' ? tab.labelAr : tab.labelEn}
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <p className="text-[10px] text-amber-400/70 mt-2">
+                        {locale === 'ar'
+                          ? `المحدد: ${createForm.allowedTabs.length} من ${AVAILABLE_TABS.length} تبويب`
+                          : `Selected: ${createForm.allowedTabs.length} of ${AVAILABLE_TABS.length} tabs`}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2">

@@ -28,6 +28,9 @@ model User {
   referralProfit  Float    @default(0)
   status          String   @default("active") // active | suspended | deleted
   role            String   @default("user")   // user | admin
+  // For sub-admins: comma-separated list of allowed admin tabs.
+  // NULL or empty = full access (primary admin behavior).
+  allowedTabs     String?
   language        String   @default("ar")     // ar | en
   theme           String   @default("dark")   // dark | light
   avatar          String?
