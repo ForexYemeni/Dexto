@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Component, ReactNode } from 'react'
 import { useI18n } from '@/hooks/use-i18n'
 import { useAuthStore } from '@/lib/store'
 import { motion } from 'framer-motion'
@@ -18,6 +18,51 @@ import { AdminTickets } from './AdminTickets'
 import { AdminSettings } from './AdminSettings'
 import { AdminLogs } from './AdminLogs'
 import { AdminAdmins } from './AdminAdmins'
+
+// ===== Local Error Boundary =====
+// Catches errors from admin sub-components and shows a friendly message
+// instead of the global "حدث خطأ" page.
+class AdminErrorBoundary extends Component<
+  { children: ReactNode; locale: string },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode; locale: string }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: any) {
+    console.error('[AdminErrorBoundary] caught:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      const ar = this.props.locale === 'ar'
+      return (
+        <div className="glass rounded-2xl p-8 text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-amber-400 mb-3" />
+          <h3 className="text-lg font-bold text-white mb-2">
+            {ar ? 'تعذر تحميل هذا القسم' : 'Failed to load this section'}
+          </h3>
+          <p className="text-xs text-white/60 mb-4 font-mono">
+            {this.state.error?.message || 'Unknown error'}
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold"
+          >
+            {ar ? 'إعادة المحاولة' : 'Retry'}
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // All available admin tabs (in display order)
 const ALL_TABS = [
@@ -97,23 +142,25 @@ export function AdminView() {
         </div>
       )}
 
-      {/* Section content */}
-      <motion.div
-        key={section}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        {section === 'dashboard' && <AdminDashboard />}
-        {section === 'users' && <AdminUsers />}
-        {section === 'admins' && <AdminAdmins />}
-        {section === 'plans' && <AdminPlans />}
-        {section === 'payments' && <AdminPayments />}
-        {section === 'wallets' && <AdminWallets />}
-        {section === 'tickets' && <AdminTickets />}
-        {section === 'settings' && <AdminSettings />}
-        {section === 'logs' && <AdminLogs />}
-      </motion.div>
+      {/* Section content — wrapped in Error Boundary to prevent global crash */}
+      <AdminErrorBoundary locale={locale}>
+        <motion.div
+          key={section}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {section === 'dashboard' && <AdminDashboard />}
+          {section === 'users' && <AdminUsers />}
+          {section === 'admins' && <AdminAdmins />}
+          {section === 'plans' && <AdminPlans />}
+          {section === 'payments' && <AdminPayments />}
+          {section === 'wallets' && <AdminWallets />}
+          {section === 'tickets' && <AdminTickets />}
+          {section === 'settings' && <AdminSettings />}
+          {section === 'logs' && <AdminLogs />}
+        </motion.div>
+      </AdminErrorBoundary>
     </div>
   )
 }
