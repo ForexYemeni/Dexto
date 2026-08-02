@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
     case 'reset_admin_password': return resetAdminPassword(body, admin.userId)
     case 'delete_admin': return deleteAdmin(body, admin.userId, admin.role)
     case 'toggle_admin_status': return toggleAdminStatus(body, admin.userId)
+    case 'update_admin_tabs': return updateAdminTabs(body, admin.userId)
   }
 
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 })
@@ -1312,5 +1313,62 @@ async function toggleAdminStatus(body: any, requesterId: string) {
   })
   return NextResponse.json({ success: true, status: newStatus })
 }
+
+// Update a sub-admin's allowed tabs (which admin tabs they can see).
+// Body: { adminId, allowedTabs }
+//   - allowedTabs: null/empty = full access
+//   - allowedTabs: ["dashboard","users"] = limited to those tabs
+// Only the primary admin (773178684) can update another admin's tabs.
+async function updateAdminTabs(body: any, requesterId: string) {
+  const { adminId, allowedTabs } = body
+  if (!adminId) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+  }
+
+  // Permission check: only the primary admin can update tabs
+  const requester = await findUserByIdFlexible(requesterId)
+  if (!requester || requester.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  if (requester.phone !== '773178684') {
+    return NextResponse.json({ error: 'only_primary_admin_can_update_tabs' }, { status: 403 })
+  }
+
+  const target = await findUserByIdFlexible(adminId)
+  if (!target || target.role !== 'admin') {
+    return NextResponse.json({ error: 'admin_not_found' }, { status: 404 })
+  }
+  // Don't allow modifying the primary admin's tabs (they always have full access)
+  if (target.phone === '773178684') {
+    return NextResponse.json({ error: 'cannot_modify_primary_admin' }, { status: 400 })
+  }
+
+  // Normalize allowedTabs
+  let normalizedAllowedTabs: string | null = null
+  if (Array.isArray(allowedTabs) && allowedTabs.length > 0) {
+    normalizedAllowedTabs = allowedTabs.filter(Boolean).join(',')
+  } else if (typeof allowedTabs === 'string' && allowedTabs.trim() !== '') {
+    normalizedAllowedTabs = allowedTabs.trim()
+  }
+
+  const updated = await updateUserRaw(adminId, { allowedTabs: normalizedAllowedTabs })
+  if (!updated) {
+    return NextResponse.json({ error: 'update_failed' }, { status: 500 })
+  }
+
+  await db.securityLog.create({
+    data: {
+      userId: requesterId,
+      eventType: 'admin_tabs_updated',
+      details: `Updated ${target.name}'s tabs: ${normalizedAllowedTabs || 'full access'}`,
+    },
+  })
+
+  return NextResponse.json({
+    success: true,
+    allowedTabs: normalizedAllowedTabs,
+  })
+}
+
 
 

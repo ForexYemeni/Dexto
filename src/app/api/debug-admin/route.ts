@@ -306,6 +306,48 @@ export async function POST(req: NextRequest) {
         }
       }
       result.steps.push({ step: 'fix_dates', ok: true, fixed })
+    } else if (action === 'reset_primary_password') {
+      // Emergency: reset the primary admin password to admin123
+      // This is the ONLY way to recover if the password is lost.
+      const passwordHash = await hashPassword('admin123')
+      const findResult: any = await (db as any).$runCommandRaw({
+        find: 'users',
+        filter: { phone: '773178684' },
+        projection: { _id: 1 },
+        limit: 1,
+      })
+      const admin = findResult?.cursor?.firstBatch?.[0]
+      if (!admin) {
+        result.steps.push({ step: 'find_primary_admin', ok: false, error: 'Primary admin not found' })
+        return NextResponse.json(result, { status: 404 })
+      }
+      const updateResult: any = await (db as any).$runCommandRaw({
+        update: 'users',
+        updates: [
+          {
+            q: { _id: admin._id },
+            u: { $set: { passwordHash, status: 'active' } },
+          },
+        ],
+      })
+      result.steps.push({
+        step: 'reset_password',
+        ok: updateResult?.nModified > 0 || updateResult?.n > 0,
+        modified: updateResult?.nModified ?? updateResult?.n ?? 0,
+      })
+
+      // Verify
+      const verifyResult: any = await (db as any).$runCommandRaw({
+        find: 'users',
+        filter: { phone: '773178684' },
+        projection: { passwordHash: 1 },
+        limit: 1,
+      })
+      const updated = verifyResult?.cursor?.firstBatch?.[0]
+      if (updated) {
+        const matches = await comparePassword('admin123', updated.passwordHash)
+        result.steps.push({ step: 'verify_password', ok: true, matches })
+      }
     } else if (action === 'list_all') {
       // List ALL users via raw command (bypass Prisma)
       const findResult: any = await (db as any).$runCommandRaw({

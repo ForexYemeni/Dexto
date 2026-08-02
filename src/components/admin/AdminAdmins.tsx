@@ -41,6 +41,12 @@ export function AdminAdmins() {
     fullAccess: true,
     allowedTabs: [] as string[],
   })
+  const [editTabsTarget, setEditTabsTarget] = useState<Admin | null>(null)
+  const [editTabsForm, setEditTabsForm] = useState({
+    fullAccess: true,
+    allowedTabs: [] as string[],
+  })
+  const [updatingTabs, setUpdatingTabs] = useState(false)
 
   // Available tabs for the access-control picker
   const AVAILABLE_TABS = [
@@ -276,6 +282,70 @@ export function AdminAdmins() {
     }
   }
 
+  // Open the edit-tabs modal for a sub-admin
+  const openEditTabs = (admin: Admin) => {
+    setEditTabsTarget(admin)
+    const currentTabs = admin.allowedTabs && admin.allowedTabs.trim() !== ''
+      ? admin.allowedTabs.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
+    setEditTabsForm({
+      fullAccess: currentTabs.length === 0,
+      allowedTabs: currentTabs,
+    })
+  }
+
+  // Save updated tabs for a sub-admin
+  const handleUpdateTabs = async () => {
+    if (!editTabsTarget) return
+    setUpdatingTabs(true)
+    try {
+      const allowedTabsPayload = editTabsForm.fullAccess
+        ? null
+        : editTabsForm.allowedTabs.length > 0
+          ? editTabsForm.allowedTabs
+          : ['dashboard']
+
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_admin_tabs',
+          adminId: editTabsTarget.id,
+          allowedTabs: allowedTabsPayload,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errMap: Record<string, string> = {
+          missing_fields: locale === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields',
+          only_primary_admin_can_update_tabs: locale === 'ar' ? 'فقط المدير الرئيسي يمكنه تعديل الصلاحيات' : 'Only the primary admin can update tabs',
+          cannot_modify_primary_admin: locale === 'ar' ? 'لا يمكن تعديل صلاحيات المدير الرئيسي' : 'Cannot modify primary admin tabs',
+          admin_not_found: locale === 'ar' ? 'المدير غير موجود' : 'Admin not found',
+          update_failed: locale === 'ar' ? 'فشل التحديث' : 'Update failed',
+        }
+        toast({
+          variant: 'destructive',
+          title: '❌ ' + t('error'),
+          description: errMap[data.error] || t('error'),
+        })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: '✅ ' + (locale === 'ar' ? 'تم تحديث الصلاحيات' : 'Permissions updated'),
+        description: locale === 'ar'
+          ? `تم تحديث صلاحيات ${editTabsTarget.name}`
+          : `Updated permissions for ${editTabsTarget.name}`,
+      })
+      setEditTabsTarget(null)
+      fetchAdmins()
+    } catch (e) {
+      toast({ variant: 'destructive', title: '❌ ' + t('error') })
+    } finally {
+      setUpdatingTabs(false)
+    }
+  }
+
   if (loading) {
     return <div className="h-64 glass rounded-2xl animate-pulse" />
   }
@@ -404,6 +474,14 @@ export function AdminAdmins() {
                   </button>
                   {!isPrimary && (
                     <>
+                      <button
+                        onClick={() => openEditTabs(admin)}
+                        className="flex-1 min-w-[100px] py-2 rounded-lg glass text-blue-400 text-xs hover:bg-blue-500/10 flex items-center justify-center gap-1"
+                        title={locale === 'ar' ? 'تعديل الصلاحيات' : 'Edit Permissions'}
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        {locale === 'ar' ? 'تعديل الصلاحيات' : 'Edit Tabs'}
+                      </button>
                       <button
                         onClick={() => handleToggleStatus(admin)}
                         className="py-2 px-3 rounded-lg glass text-white text-xs hover:bg-white/10"
@@ -662,6 +740,131 @@ export function AdminAdmins() {
                   >
                     {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
                     {t('resetAdminPassword')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit tabs modal */}
+      <AnimatePresence>
+        {editTabsTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setEditTabsTarget(null)}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-strong rounded-3xl p-6 w-full max-w-md"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-blue-400" />
+                  {locale === 'ar' ? 'تعديل الصلاحيات' : 'Edit Permissions'}
+                </h3>
+                <button onClick={() => setEditTabsTarget(null)} className="text-white/40 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="glass rounded-xl p-3 bg-blue-500/5 border border-blue-500/20">
+                  <p className="text-xs text-white/80">
+                    {locale === 'ar' ? 'تعديل صلاحيات:' : 'Editing permissions for:'}{' '}
+                    <span className="font-bold text-white">{editTabsTarget.name}</span>
+                  </p>
+                  <p className="text-[10px] text-white/40 font-mono mt-1">+{editTabsTarget.phone}</p>
+                </div>
+
+                {/* Full access toggle */}
+                <label className="flex items-center gap-2 text-white text-xs bg-blue-500/5 rounded-xl p-3 border border-blue-500/20 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editTabsForm.fullAccess}
+                    onChange={(e) => setEditTabsForm({ ...editTabsForm, fullAccess: e.target.checked })}
+                    className="rounded"
+                  />
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>
+                    {locale === 'ar'
+                      ? 'صلاحية كاملة (جميع التبويبات)'
+                      : 'Full access (all tabs)'}
+                  </span>
+                </label>
+
+                {/* Tab picker */}
+                {!editTabsForm.fullAccess && (
+                  <div className="glass rounded-xl p-3 border border-white/10">
+                    <p className="text-[10px] text-white/40 mb-2">
+                      {locale === 'ar'
+                        ? 'اختر التبويبات المسموح بها:'
+                        : 'Select allowed tabs:'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {AVAILABLE_TABS.map((tab) => {
+                        const checked = editTabsForm.allowedTabs.includes(tab.key)
+                        return (
+                          <label
+                            key={tab.key}
+                            className={`flex items-center gap-1.5 text-[11px] p-2 rounded-lg cursor-pointer border transition-all ${
+                              checked
+                                ? 'bg-blue-500/10 border-blue-500/40 text-white'
+                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditTabsForm({
+                                    ...editTabsForm,
+                                    allowedTabs: [...editTabsForm.allowedTabs, tab.key],
+                                  })
+                                } else {
+                                  setEditTabsForm({
+                                    ...editTabsForm,
+                                    allowedTabs: editTabsForm.allowedTabs.filter((k) => k !== tab.key),
+                                  })
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            {locale === 'ar' ? tab.labelAr : tab.labelEn}
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <p className="text-[10px] text-amber-400/70 mt-2">
+                      {locale === 'ar'
+                        ? `المحدد: ${editTabsForm.allowedTabs.length} من ${AVAILABLE_TABS.length} تبويب`
+                        : `Selected: ${editTabsForm.allowedTabs.length} of ${AVAILABLE_TABS.length} tabs`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditTabsTarget(null)}
+                    className="flex-1 py-3 rounded-xl glass text-white text-sm font-medium hover:bg-white/10"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    onClick={handleUpdateTabs}
+                    disabled={updatingTabs}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {updatingTabs ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                    {locale === 'ar' ? 'حفظ الصلاحيات' : 'Save Permissions'}
                   </button>
                 </div>
               </div>
