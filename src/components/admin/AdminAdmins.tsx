@@ -8,7 +8,32 @@ import {
   X, CheckCircle2, Lock, Crown, AlertTriangle,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency } from '@/lib/time-utils'
+
+// Safe date formatter — never throws, even with null/undefined/invalid dates
+function safeDate(input: string | null | undefined, locale: string): string {
+  if (!input) return locale === 'ar' ? 'لم يسجل بعد' : 'Never'
+  try {
+    const d = new Date(input)
+    if (isNaN(d.getTime())) return locale === 'ar' ? '—' : '—'
+    // Use 'ar' instead of 'ar-SA' which can throw in some environments
+    return d.toLocaleDateString(locale === 'ar' ? 'ar' : 'en-US')
+  } catch {
+    return locale === 'ar' ? '—' : '—'
+  }
+}
+
+// Available tabs for the access-control picker
+const AVAILABLE_TABS = [
+  { key: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard' },
+  { key: 'users', labelAr: 'إدارة المستخدمين', labelEn: 'Users' },
+  { key: 'admins', labelAr: 'إدارة المدراء', labelEn: 'Admins' },
+  { key: 'plans', labelAr: 'إدارة التعدين', labelEn: 'Mining Plans' },
+  { key: 'payments', labelAr: 'إدارة المدفوعات', labelEn: 'Payments' },
+  { key: 'wallets', labelAr: 'الشبكات', labelEn: 'Networks' },
+  { key: 'tickets', labelAr: 'تذاكر الدعم', labelEn: 'Support Tickets' },
+  { key: 'settings', labelAr: 'الإعدادات', labelEn: 'Settings' },
+  { key: 'logs', labelAr: 'سجلات الأمان', labelEn: 'Security Logs' },
+]
 
 interface Admin {
   id: string
@@ -47,19 +72,6 @@ export function AdminAdmins() {
     allowedTabs: [] as string[],
   })
   const [updatingTabs, setUpdatingTabs] = useState(false)
-
-  // Available tabs for the access-control picker
-  const AVAILABLE_TABS = [
-    { key: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard' },
-    { key: 'users', labelAr: 'إدارة المستخدمين', labelEn: 'Users' },
-    { key: 'admins', labelAr: 'إدارة المدراء', labelEn: 'Admins' },
-    { key: 'plans', labelAr: 'إدارة التعدين', labelEn: 'Mining Plans' },
-    { key: 'payments', labelAr: 'إدارة المدفوعات', labelEn: 'Payments' },
-    { key: 'wallets', labelAr: 'الشبكات', labelEn: 'Networks' },
-    { key: 'tickets', labelAr: 'تذاكر الدعم', labelEn: 'Support Tickets' },
-    { key: 'settings', labelAr: 'الإعدادات', labelEn: 'Settings' },
-    { key: 'logs', labelAr: 'سجلات الأمان', labelEn: 'Security Logs' },
-  ]
 
   const fetchAdmins = async () => {
     try {
@@ -423,15 +435,13 @@ export function AdminAdmins() {
                   <div className="glass rounded-lg p-2">
                     <p className="text-[10px] text-white/40">{locale === 'ar' ? 'آخر دخول' : 'Last login'}</p>
                     <p className="text-white text-[11px]">
-                      {admin.lastLoginAt
-                        ? new Date(admin.lastLoginAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US')
-                        : (locale === 'ar' ? 'لم يسجل بعد' : 'Never')}
+                      {safeDate(admin.lastLoginAt, locale)}
                     </p>
                   </div>
                   <div className="glass rounded-lg p-2">
                     <p className="text-[10px] text-white/40">{locale === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</p>
                     <p className="text-white text-[11px]">
-                      {new Date(admin.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US')}
+                      {safeDate(admin.createdAt, locale)}
                     </p>
                   </div>
                 </div>
